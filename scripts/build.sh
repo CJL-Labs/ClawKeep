@@ -5,8 +5,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 "$ROOT/scripts/gen-proto.sh"
 
-cd "$ROOT/sentineld"
-go build ./cmd/sentineld
+cd "$ROOT/keepd"
+go build -o keepd ./cmd/keepd
 
 cd "$ROOT/app"
 xcodegen generate

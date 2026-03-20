@@ -38,13 +38,13 @@ final class DaemonManager {
     }
 
     private func resolveDaemonBinary() throws -> URL {
-        if let bundled = Bundle.main.url(forResource: "sentineld", withExtension: nil) {
+        if let bundled = Bundle.main.url(forResource: "keepd", withExtension: nil) {
             return bundled
         }
-        let repoBinary = repoRoot.appendingPathComponent("sentineld/sentineld")
+        let repoBinary = repoRoot.appendingPathComponent("keepd/keepd")
         if FileManager.default.fileExists(atPath: repoBinary.path) {
             return repoBinary
         }
-        throw NSError(domain: "ClawKeep", code: 1, userInfo: [NSLocalizedDescriptionKey: "sentineld binary not found"])
+        throw NSError(domain: "ClawKeep", code: 1, userInfo: [NSLocalizedDescriptionKey: "keepd binary not found"])
     }
 }

@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package keep.v1;
+
+option go_package = "claw-keep/keepd/gen/proto/keep/v1;keepv1";
+
+import "proto/keep/v1/config.proto";
+import "proto/keep/v1/types.proto";
+
+service KeepService {
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  rpc SubscribeStatus(SubscribeStatusRequest) returns (stream StatusEvent);
+  rpc SubscribeLogs(SubscribeLogsRequest) returns (stream LogEntry);
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+  rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
+  rpc TriggerRepair(TriggerRepairRequest) returns (TriggerRepairResponse);
+  rpc Restart(RestartRequest) returns (RestartResponse);
+  rpc ResetMonitoring(ResetMonitoringRequest) returns (ResetMonitoringResponse);
+  rpc TestNotify(TestNotifyRequest) returns (TestNotifyResponse);
+}
+
+message GetStatusRequest {}
+message GetStatusResponse {
+  KeepStatus status = 1;
+}
+
+message SubscribeStatusRequest {}
+message SubscribeLogsRequest {
+  int32 max_backlog = 1;
+}
+
+message GetConfigRequest {}
+message GetConfigResponse {
+  AppConfig config = 1;
+}
+
+message UpdateConfigRequest {
+  AppConfig config = 1;
+}
+message UpdateConfigResponse {
+  AppConfig config = 1;
+}
+
+message TriggerRepairRequest {}
+message TriggerRepairResponse {
+  bool accepted = 1;
+}
+
+message RestartRequest {}
+message RestartResponse {
+  bool accepted = 1;
+}
+
+message ResetMonitoringRequest {}
+message ResetMonitoringResponse {
+  bool accepted = 1;
+}
+
+message TestNotifyRequest {
+  string channel = 1;
+}
+message TestNotifyResponse {
+  bool accepted = 1;
+}

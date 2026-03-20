@@ -3,7 +3,7 @@ SHELL := /bin/zsh
 .PHONY: build tidy
 
 build:
-	cd sentineld && go build ./cmd/sentineld
+	cd keepd && go build ./cmd/keepd
 
 tidy:
-	cd sentineld && go mod tidy
+	cd keepd && go mod tidy

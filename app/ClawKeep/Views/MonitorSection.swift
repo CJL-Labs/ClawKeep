@@ -18,21 +18,21 @@ struct MonitorSection: View {
         .formStyle(.grouped)
     }
 
-    private func stringBinding(_ keyPath: WritableKeyPath<Sentinel_V1_MonitorConfig, String>) -> Binding<String> {
+    private func stringBinding(_ keyPath: WritableKeyPath<Keep_V1_MonitorConfig, String>) -> Binding<String> {
         Binding(
             get: { appState.config.monitor[keyPath: keyPath] },
             set: { appState.config.monitor[keyPath: keyPath] = $0 }
         )
     }
 
-    private func boolBinding(_ keyPath: WritableKeyPath<Sentinel_V1_MonitorConfig, Bool>) -> Binding<Bool> {
+    private func boolBinding(_ keyPath: WritableKeyPath<Keep_V1_MonitorConfig, Bool>) -> Binding<Bool> {
         Binding(
             get: { appState.config.monitor[keyPath: keyPath] },
             set: { appState.config.monitor[keyPath: keyPath] = $0 }
         )
     }
 
-    private func int32Binding(_ keyPath: WritableKeyPath<Sentinel_V1_MonitorConfig, Int32>) -> Binding<Int> {
+    private func int32Binding(_ keyPath: WritableKeyPath<Keep_V1_MonitorConfig, Int32>) -> Binding<Int> {
         Binding(
             get: { Int(appState.config.monitor[keyPath: keyPath]) },
             set: { appState.config.monitor[keyPath: keyPath] = Int32($0) }

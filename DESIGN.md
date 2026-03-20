@@ -23,7 +23,7 @@ SwiftUI 前端 + Go 后端双进程架构，通过 gRPC over Unix Domain Socket 
 │                 │ gRPC / UDS                  │
 │                 │ $TMPDIR/claw-keep.sock  │
 │  ┌──────────────┴─────────────────────────┐  │
-│  │      sentineld (Go daemon)             │  │
+│  │      keepd (Go daemon)             │  │
 │  │  • ProcessMonitor (kqueue + TCP)       │  │
 │  │  • LogCollector (fsnotify + ring buf)  │  │
 │  │  • AgentDispatcher (CLI exec)          │  │
@@ -33,7 +33,7 @@ SwiftUI 前端 + Go 后端双进程架构，通过 gRPC over Unix Domain Socket 
 │  └────────────────────────────────────────┘  │
 │                                              │
 │  Contents/MacOS/ClawKeep  (Swift binary) │
-│  Contents/MacOS/sentineld     (Go binary)    │
+│  Contents/MacOS/keepd     (Go binary)    │
 └──────────────────────────────────────────────┘
 ```
 
@@ -43,12 +43,12 @@ SwiftUI 前端 + Go 后端双进程架构，通过 gRPC over Unix Domain Socket 
 - 支持 server-streaming RPC，实时推送状态和日志到 UI
 - UDS 路径使用 `$TMPDIR`（macOS 上是用户隔离的 `/var/folders/.../T/`），避免 `/tmp` 全局可写的安全隐患
 
-SwiftUI 进程职责：启动/管理 sentineld 子进程、渲染 UI、转发用户操作。
-sentineld 进程职责：所有核心逻辑，无 UI 依赖，可独立运行和测试。
+SwiftUI 进程职责：启动/管理 keepd 子进程、渲染 UI、转发用户操作。
+keepd 进程职责：所有核心逻辑，无 UI 依赖，可独立运行和测试。
 
 ### gRPC 重连机制
 
-SwiftUI 客户端需要处理 sentineld 崩溃或重启的情况：
+SwiftUI 客户端需要处理 keepd 崩溃或重启的情况：
 - 检测到连接断开后，使用指数退避重连（初始 1s，最大 30s）
 - 重连成功后自动重新订阅状态 stream
 - 重连期间状态栏图标显示灰色（未监控），避免误导用户
@@ -61,13 +61,13 @@ SwiftUI 客户端需要处理 sentineld 崩溃或重启的情况：
 claw-keep/
 ├── Makefile
 ├── config.example.toml
-├── proto/sentinel/v1/
-│   ├── sentinel.proto          # 主服务定义
+├── proto/keep/v1/
+│   ├── keep.proto          # 主服务定义
 │   ├── config.proto            # 配置消息
 │   └── types.proto             # 共享类型
-├── sentineld/                  # Go daemon
+├── keepd/                  # Go daemon
 │   ├── go.mod / go.sum
-│   ├── cmd/sentineld/main.go
+│   ├── cmd/keepd/main.go
 │   └── internal/
 │       ├── config/             # TOML 配置加载/校验/热更新
 │       ├── monitor/            # kqueue + TCP 进程监控
@@ -80,7 +80,7 @@ claw-keep/
 │   ├── ClawKeep.xcodeproj/
 │   └── ClawKeep/
 │       ├── ClawKeepApp.swift
-│       ├── DaemonManager.swift # sentineld 生命周期管理
+│       ├── DaemonManager.swift # keepd 生命周期管理
 │       ├── GRPCClient.swift
 │       ├── Views/
 │       │   ├── StatusBarView.swift
@@ -91,7 +91,7 @@ claw-keep/
 │       │   └── LogView.swift
 │       └── Models/
 │           ├── AppState.swift
-│           └── SentinelStatus.swift
+│           └── KeepStatus.swift
 └── scripts/
     ├── build.sh
     ├── gen-proto.sh
@@ -409,7 +409,7 @@ use_tls = true
 ```
 
 每个状态转换都会：
-1. 更新 SentinelStatus 并通过 gRPC stream 推送到 UI
+1. 更新 KeepStatus 并通过 gRPC stream 推送到 UI
 2. 根据配置决定是否发送通知
 
 ### Exhausted 终态说明
@@ -422,11 +422,11 @@ use_tls = true
 
 ---
 
-## 9. sentineld 自身日志
+## 9. keepd 自身日志
 
 守护进程自身的可观测性同样重要：
 
-- 日志路径：`~/.claw-keep/logs/sentineld.log`
+- 日志路径：`~/.claw-keep/logs/keepd.log`
 - 日志格式：结构化 JSON（时间、级别、模块、消息）
 - 日志轮转：按天轮转，保留最近 7 天（可配置）
 - 日志级别：通过配置项 `log_level` 控制（debug / info / warn / error），默认 info
@@ -515,13 +515,13 @@ SwiftUI Settings 窗口，TabView 分区：
 - 崩溃归档目录
 - 崩溃抓取行数
 - 归档保留天数
-- sentineld 日志级别（debug / info / warn / error）
-- sentineld 日志保留天数
+- keepd 日志级别（debug / info / warn / error）
+- keepd 日志保留天数
 
 ### Tab 5: 通用
 
 - 开机自启开关（SMAppService）
-- sentineld 日志目录（只读展示）
+- keepd 日志目录（只读展示）
 
 ---
 
@@ -532,21 +532,21 @@ SwiftUI Settings 窗口，TabView 分区：
 ```bash
 # 1. 生成 protobuf 代码
 scripts/gen-proto.sh
-# → sentineld/gen/sentinel/v1/*.go
+# → keepd/gen/keep/v1/*.go
 # → app/ClawKeep/Gen/*.swift
 
 # 2. 编译 Go daemon (universal binary)
-cd sentineld
-CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o sentineld-arm64 ./cmd/sentineld
-CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o sentineld-amd64 ./cmd/sentineld
-lipo -create -output sentineld sentineld-arm64 sentineld-amd64
+cd keepd
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o keepd-arm64 ./cmd/keepd
+CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o keepd-amd64 ./cmd/keepd
+lipo -create -output keepd keepd-arm64 keepd-amd64
 
 # 3. 编译 SwiftUI app (Xcode)
 xcodebuild -project app/ClawKeep.xcodeproj \
   -scheme ClawKeep -configuration Release
 
-# 4. 嵌入 sentineld 到 .app bundle
-cp sentineld ClawKeep.app/Contents/MacOS/
+# 4. 嵌入 keepd 到 .app bundle
+cp keepd ClawKeep.app/Contents/MacOS/
 
 # 5. 签名
 codesign --deep --force --sign - ClawKeep.app
@@ -554,7 +554,7 @@ codesign --deep --force --sign - ClawKeep.app
 
 ### 11.2 预计体积
 
-- sentineld Go binary: ~10-15MB（静态链接）
+- keepd Go binary: ~10-15MB（静态链接）
 - SwiftUI app: ~2-3MB
 - 总计 .app bundle: ~15-20MB
 
@@ -562,7 +562,7 @@ codesign --deep --force --sign - ClawKeep.app
 
 ## 13. 关键依赖
 
-### Go (sentineld)
+### Go (keepd)
 
 | 依赖 | 用途 |
 |------|------|
@@ -616,7 +616,7 @@ func disableAutoLaunch() throws {
 ## 16. 验证方案
 
 1. **单元测试**：每个 Go 模块独立测试（monitor/logcollector/agent/notifier）
-2. **集成测试**：启动 sentineld，模拟进程崩溃（kill 一个 sleep 进程），验证事件链
+2. **集成测试**：启动 keepd，模拟进程崩溃（kill 一个 sleep 进程），验证事件链
 3. **端到端测试**：
    - 启动 app → 确认状态栏图标显示绿色
    - kill openclaw-gateway → 确认状态栏变红 + 收到通知

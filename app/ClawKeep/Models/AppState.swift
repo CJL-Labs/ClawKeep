@@ -4,9 +4,9 @@ import SwiftProtobuf
 
 @MainActor
 final class AppState: ObservableObject {
-    @Published var status = SentinelStatusModel()
+    @Published var status = KeepStatusModel()
     @Published var logs: [String] = []
-    @Published var config = Sentinel_V1_AppConfig()
+    @Published var config = Keep_V1_AppConfig()
     @Published var daemonRunning = false
     @Published var isConnected = false
     @Published var errorMessage = ""

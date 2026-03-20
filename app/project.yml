@@ -28,8 +28,9 @@ targets:
       - path: ClawKeep
       - path: ClawKeep/Gen
     resources:
+      - path: ClawKeep/Assets.xcassets
       - path: ../config.example.toml
-      - path: ../sentineld/sentineld
+      - path: ../keepd/keepd
     dependencies:
       - package: grpc-swift
         product: GRPCCore

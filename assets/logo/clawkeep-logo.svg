@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512px" height="512px" viewBox="0 0 512 512" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>ClawKeep Logo</title>
+    <defs>
+        <filter x="-2.0%" y="-2.0%" width="104.0%" height="104.0%" filterUnits="objectBoundingBox" id="filter-1">
+            <feOffset dx="0" dy="4" in="SourceAlpha" result="shadowOffsetOuter1"></feOffset>
+            <feGaussianBlur stdDeviation="4" in="shadowOffsetOuter1" result="shadowBlurOuter1"></feGaussianBlur>
+            <feColorMatrix values="0 0 0 0 0   0 0 0 0 0   0 0 0 0 0  0 0 0 0.15 0" type="matrix" in="shadowBlurOuter1"></feColorMatrix>
+        </filter>
+    </defs>
+
+    <rect id="Rectangle" fill="#FFFFFF" fill-rule="evenodd" x="0" y="0" width="512" height="512" rx="100"></rect>
+
+    <g id="Claw-Guardian-Icon" transform="translate(128.000000, 108.000000)">
+        <path d="M128,0 C176.76,0 220.6,28.71 243.66,73.5 C252.12,89.94 256,108.45 256,128 C256,198.69 198.69,256 128,256 C57.31,256 0,198.69 0,128 C0,108.45 3.88,89.94 12.34,73.5 C35.4,28.71 79.24,0 128,0 Z M128,36 C104.38,36 82.16,46.61 66.86,64.33 L64.33,66.86 C46.61,82.16 36,104.38 36,128 C36,178.81 77.19,220 128,220 C178.81,220 220,178.81 220,128 C220,104.38 209.39,82.16 191.67,66.86 L189.14,64.33 C173.84,46.61 151.62,36 128,36 Z" id="Shield-Outline" fill="#007AFF" fill-rule="nonzero"></path>
+
+        <g id="Internal-Elements" transform="translate(68.000000, 70.000000)" fill="#007AFF">
+            <rect id="Claw-1" x="22" y="0" width="16" height="80" rx="8"></rect>
+            <rect id="Claw-2" x="52" y="10" width="16" height="80" rx="8"></rect>
+            <rect id="Claw-3" x="82" y="0" width="16" height="80" rx="8"></rect>
+            <circle id="Status-Dot" cx="60" cy="130" r="18"></circle>
+        </g>
+    </g>
+</svg>
