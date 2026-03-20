@@ -4,7 +4,11 @@
 
 # ClawKeep
 
-ClawKeep is a macOS companion app and daemon for monitoring, notifications, and agent orchestration.
+ClawKeep is a macOS companion app and daemon for monitoring `openclaw-gateway`, collecting crash context, and coordinating automated repair flows.
+
+## Overview
+
+ClawKeep consists of a SwiftUI macOS app and a bundled `keepd` daemon. The app handles the menu bar UI and local control surface; `keepd` handles monitoring, log collection, notifications, and agent-triggered remediation.
 
 ## Branding
 

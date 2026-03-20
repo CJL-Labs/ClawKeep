@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo/clawkeep-logo.svg" width="140" alt="ClawKeep logo">
+</p>
+
 # ClawKeep 技术方案
 
 ## Context
