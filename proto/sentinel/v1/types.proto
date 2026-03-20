@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package sentinel.v1;
+
+option go_package = "claw-keep/sentineld/gen/sentinel/v1;sentinelv1";
+
+import "google/protobuf/timestamp.proto";
+
+enum State {
+  STATE_UNSPECIFIED = 0;
+  STATE_WATCHING = 1;
+  STATE_CRASH_DETECTED = 2;
+  STATE_COLLECTING = 3;
+  STATE_REPAIRING = 4;
+  STATE_RESTARTING = 5;
+  STATE_EXHAUSTED = 6;
+  STATE_UNMONITORED = 7;
+}
+
+message SentinelStatus {
+  State state = 1;
+  string process_name = 2;
+  int32 pid = 3;
+  int32 exit_code = 4;
+  int32 crash_count = 5;
+  int32 repair_attempts = 6;
+  string last_archive = 7;
+  string detail = 8;
+  google.protobuf.Timestamp last_crash_time = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message LogEntry {
+  google.protobuf.Timestamp time = 1;
+  string level = 2;
+  string source = 3;
+  string message = 4;
+}
+
+message CrashReport {
+  string process_name = 1;
+  int32 pid = 2;
+  int32 exit_code = 3;
+  google.protobuf.Timestamp crash_time = 4;
+  repeated string tail_logs = 5;
+  string err_log_tail = 6;
+  string stderr_snapshot = 7;
+  string archive_path = 8;
+}
+
+message StatusEvent {
+  SentinelStatus status = 1;
+  string reason = 2;
+}

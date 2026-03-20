@@ -1,0 +1,85 @@
+[monitor]
+process_name = "openclaw-gateway"
+pid_file = "~/.openclaw/gateway.pid"
+host = "127.0.0.1"
+port = 18789
+enable_kqueue = true
+enable_tcp_probe = true
+tcp_probe_timeout_ms = 3000
+health_command = ""
+restart_cooldown_sec = 30
+max_restart_attempts = 5
+
+[log]
+watch_paths = [
+  "/tmp/openclaw/",
+  "~/.openclaw/logs/"
+]
+crash_archive_dir = "~/.claw-keep/crashes/"
+tail_lines_on_crash = 200
+max_archive_days = 30
+
+[agent]
+default_agent = "claude"
+
+[[agent.agents]]
+name = "claude"
+cli_path = "/usr/local/bin/claude"
+cli_args = ["-p", "--model", "sonnet"]
+working_dir = "~/.openclaw/"
+timeout_sec = 300
+
+[[agent.agents]]
+name = "codex"
+cli_path = "/usr/local/bin/codex"
+cli_args = ["exec"]
+working_dir = "~/.openclaw/"
+timeout_sec = 300
+
+[repair]
+auto_repair = true
+auto_restart = true
+restart_command = "/usr/local/bin/openclaw"
+restart_args = ["gateway"]
+max_repair_attempts = 3
+prompt_template = """
+openclaw-gateway 进程崩溃了。
+退出码: {{.ExitCode}}
+崩溃时间: {{.CrashTime}}
+
+错误日志:
+{{.ErrLogTail}}
+
+运行日志:
+{{.TailLogs}}
+
+请分析崩溃原因并修复。
+"""
+
+[notify]
+notify_on = ["crash", "repair_success", "repair_fail"]
+
+[notify.feishu]
+enabled = false
+webhook_url = ""
+secret = ""
+
+[notify.bark]
+enabled = false
+server_url = "https://api.day.app"
+device_key = ""
+
+[notify.smtp]
+enabled = false
+host = ""
+port = 465
+username = ""
+password = ""
+from = ""
+to = []
+use_tls = true
+
+[daemon]
+log_level = "info"
+log_dir = "~/.claw-keep/logs/"
+log_retain_days = 7
