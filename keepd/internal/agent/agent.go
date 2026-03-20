@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -32,9 +34,15 @@ type Registry struct {
 }
 
 type Dispatcher struct {
+	mu             sync.RWMutex
 	defaultAgent   string
 	promptTemplate *template.Template
 	registry       *Registry
+}
+
+type TimeoutError struct {
+	Agent   string
+	Timeout time.Duration
 }
 
 type cliAgent struct {
@@ -79,22 +87,66 @@ func (r *Registry) Get(name string) (Runner, bool) {
 	return agent, ok
 }
 
-func (d *Dispatcher) Dispatch(ctx context.Context, report crash.Report) (*Result, error) {
-	runner, ok := d.registry.Get(d.defaultAgent)
-	if !ok {
-		return nil, fmt.Errorf("agent %q not found", d.defaultAgent)
-	}
-	if !runner.Available() {
-		return nil, fmt.Errorf("agent %q is not available", d.defaultAgent)
-	}
-	prompt, err := d.renderPrompt(report)
+func (d *Dispatcher) ApplyConfig(agentCfg config.AgentConfig, repairCfg config.RepairConfig) error {
+	registry, err := NewRegistry(agentCfg.Agents)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return runner.Repair(ctx, report, prompt)
+	tpl, err := template.New("repair").Parse(repairCfg.PromptTemplate)
+	if err != nil {
+		return err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.defaultAgent = agentCfg.DefaultAgent
+	d.promptTemplate = tpl
+	d.registry = registry
+	return nil
 }
 
-func (d *Dispatcher) renderPrompt(report crash.Report) (string, error) {
+func (d *Dispatcher) Dispatch(ctx context.Context, report crash.Report) (*Result, []string, error) {
+	d.mu.RLock()
+	defaultAgent := d.defaultAgent
+	registry := d.registry
+	prompt, err := d.renderPromptLocked(report)
+	d.mu.RUnlock()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	order := candidateOrder(registry, defaultAgent)
+	if len(order) == 0 {
+		return nil, nil, errors.New("no agents configured")
+	}
+
+	var failures []string
+	var timeoutWarnings []string
+	for _, name := range order {
+		runner, ok := registry.Get(name)
+		if !ok {
+			failures = append(failures, fmt.Sprintf("%s: not found", name))
+			continue
+		}
+		if !runner.Available() {
+			failures = append(failures, fmt.Sprintf("%s: unavailable", name))
+			continue
+		}
+
+		result, repairErr := runner.Repair(ctx, report, prompt)
+		if repairErr == nil {
+			return result, timeoutWarnings, nil
+		}
+
+		var timeoutErr *TimeoutError
+		if errors.As(repairErr, &timeoutErr) {
+			timeoutWarnings = append(timeoutWarnings, timeoutErr.Error())
+		}
+		failures = append(failures, repairErr.Error())
+	}
+	return nil, timeoutWarnings, errors.New(strings.Join(failures, "; "))
+}
+
+func (d *Dispatcher) renderPromptLocked(report crash.Report) (string, error) {
 	var buffer bytes.Buffer
 	data := struct {
 		ExitCode       int
@@ -117,6 +169,10 @@ func (d *Dispatcher) renderPrompt(report crash.Report) (string, error) {
 
 func (a *cliAgent) Name() string {
 	return a.name
+}
+
+func (e *TimeoutError) Error() string {
+	return fmt.Sprintf("agent %q timed out after %s", e.Agent, e.Timeout)
 }
 
 func (a *cliAgent) Available() bool {
@@ -144,7 +200,7 @@ func (a *cliAgent) Repair(ctx context.Context, _ crash.Report, prompt string) (*
 	output, err := command.CombinedOutput()
 	duration := time.Since(startedAt)
 	if errors.Is(commandCtx.Err(), context.DeadlineExceeded) {
-		return nil, fmt.Errorf("agent %q timed out after %s", a.name, a.timeout)
+		return nil, &TimeoutError{Agent: a.name, Timeout: a.timeout}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("agent %q failed: %w: %s", a.name, err, string(output))
@@ -165,4 +221,20 @@ func joinLines(lines []string) string {
 		buffer.WriteString(line)
 	}
 	return buffer.String()
+}
+
+func candidateOrder(registry *Registry, defaultAgent string) []string {
+	order := make([]string, 0, len(registry.agents))
+	seen := make(map[string]struct{}, len(registry.agents))
+	if defaultAgent != "" {
+		order = append(order, defaultAgent)
+		seen[defaultAgent] = struct{}{}
+	}
+	for name := range registry.agents {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		order = append(order, name)
+	}
+	return order
 }

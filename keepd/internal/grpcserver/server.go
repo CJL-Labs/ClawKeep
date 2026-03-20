@@ -171,7 +171,7 @@ func (s *Server) TestNotify(ctx context.Context, request *keepv1.TestNotifyReque
 		Title: "ClawKeep test notification",
 		Body:  "This is a test notification for channel " + channel,
 	}
-	if err := s.notifier.Notify(ctx, notifier.EventCrash, message); err != nil {
+	if err := s.notifier.TestChannel(ctx, channel, message); err != nil {
 		return nil, err
 	}
 	return &keepv1.TestNotifyResponse{Accepted: true}, nil

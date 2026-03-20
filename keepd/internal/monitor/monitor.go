@@ -58,11 +58,15 @@ func (m *Monitor) Events() <-chan Event {
 	return m.events
 }
 
+func (m *Monitor) ApplyConfig(cfg config.MonitorConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cfg = cfg
+}
+
 func (m *Monitor) Run(ctx context.Context) {
 	go m.processLoop(ctx)
-	if m.cfg.EnableTCPProbe {
-		go m.tcpLoop(ctx)
-	}
+	go m.tcpLoop(ctx)
 	<-ctx.Done()
 }
 
@@ -74,22 +78,27 @@ func (m *Monitor) processLoop(ctx context.Context) {
 		default:
 		}
 
-		pid, err := m.discoverPID()
+		cfg := m.currentConfig()
+		pid, err := m.discoverPID(cfg)
 		if err != nil {
-			time.Sleep(2 * time.Second)
+			if !sleepContext(ctx, 2*time.Second) {
+				return
+			}
 			continue
 		}
 		if m.swapPID(pid) {
 			m.publish(Event{Type: EventProcessUp, PID: pid, Time: time.Now(), Detail: "process discovered"})
 		}
 
-		exitCode, err := waitForExit(ctx, pid)
+		exitCode, err := waitForExit(ctx, pid, cfg.EnableKqueue)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return
 			}
 			m.logger.Warn("wait for exit failed", "pid", pid, "error", err.Error())
-			time.Sleep(2 * time.Second)
+			if !sleepContext(ctx, 2*time.Second) {
+				return
+			}
 			continue
 		}
 
@@ -105,7 +114,6 @@ func (m *Monitor) processLoop(ctx context.Context) {
 }
 
 func (m *Monitor) tcpLoop(ctx context.Context) {
-	address := fmt.Sprintf("%s:%d", m.cfg.Host, m.cfg.Port)
 	for {
 		select {
 		case <-ctx.Done():
@@ -113,11 +121,33 @@ func (m *Monitor) tcpLoop(ctx context.Context) {
 		default:
 		}
 
-		conn, err := net.DialTimeout("tcp", address, time.Duration(m.cfg.TCPProbeTimeoutMS)*time.Millisecond)
+		cfg := m.currentConfig()
+		if !cfg.EnableTCPProbe {
+			m.setPortState(false, "tcp probe disabled")
+			if !sleepContext(ctx, 2*time.Second) {
+				return
+			}
+			continue
+		}
+
+		address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+		conn, err := net.DialTimeout("tcp", address, time.Duration(cfg.TCPProbeTimeoutMS)*time.Millisecond)
 		if err != nil {
 			m.setPortState(false, err.Error())
-			time.Sleep(2 * time.Second)
+			if !sleepContext(ctx, 2*time.Second) {
+				return
+			}
 			continue
+		}
+		if cfg.HealthCommand != "" {
+			if err := runHealthCommand(ctx, cfg.HealthCommand); err != nil {
+				_ = conn.Close()
+				m.setPortState(false, err.Error())
+				if !sleepContext(ctx, 2*time.Second) {
+					return
+				}
+				continue
+			}
 		}
 
 		m.setPortState(true, "tcp connected")
@@ -140,13 +170,15 @@ func (m *Monitor) tcpLoop(ctx context.Context) {
 				m.setPortState(false, "connection closed")
 			}
 		}
-		time.Sleep(2 * time.Second)
+		if !sleepContext(ctx, 2*time.Second) {
+			return
+		}
 	}
 }
 
-func (m *Monitor) discoverPID() (int, error) {
-	if m.cfg.PIDFile != "" {
-		content, err := os.ReadFile(m.cfg.PIDFile)
+func (m *Monitor) discoverPID(cfg config.MonitorConfig) (int, error) {
+	if cfg.PIDFile != "" {
+		content, err := os.ReadFile(cfg.PIDFile)
 		if err == nil {
 			pid, convErr := strconv.Atoi(strings.TrimSpace(string(content)))
 			if convErr == nil && pid > 0 && processExists(pid) {
@@ -155,7 +187,7 @@ func (m *Monitor) discoverPID() (int, error) {
 		}
 	}
 
-	output, err := exec.Command("pgrep", "-x", m.cfg.ProcessName).Output()
+	output, err := exec.Command("pgrep", "-x", cfg.ProcessName).Output()
 	if err != nil {
 		return 0, err
 	}
@@ -166,7 +198,22 @@ func (m *Monitor) discoverPID() (int, error) {
 	return strconv.Atoi(fields[0])
 }
 
-func waitForExit(ctx context.Context, pid int) (int, error) {
+func waitForExit(ctx context.Context, pid int, enableKqueue bool) (int, error) {
+	if !enableKqueue {
+		for {
+			select {
+			case <-ctx.Done():
+				return 0, context.Canceled
+			default:
+			}
+			if !processExists(pid) {
+				return 1, nil
+			}
+			if !sleepContext(ctx, time.Second) {
+				return 0, context.Canceled
+			}
+		}
+	}
 	kq, err := unix.Kqueue()
 	if err != nil {
 		return 0, err
@@ -255,4 +302,30 @@ func (m *Monitor) setPortState(up bool, detail string) {
 		eventType = EventPortUp
 	}
 	m.publish(Event{Type: eventType, PID: m.lastPID, Time: time.Now(), Detail: detail})
+}
+
+func (m *Monitor) currentConfig() config.MonitorConfig {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cfg
+}
+
+func sleepContext(ctx context.Context, wait time.Duration) bool {
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+func runHealthCommand(ctx context.Context, command string) error {
+	cmd := exec.CommandContext(ctx, "/bin/zsh", "-lc", command)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("health command failed: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
 }

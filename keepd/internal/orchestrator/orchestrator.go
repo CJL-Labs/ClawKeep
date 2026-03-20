@@ -56,6 +56,8 @@ type Orchestrator struct {
 
 	subscribers map[int]chan StatusEvent
 	nextSubID   int
+	restarts    int
+	lastRestart time.Time
 }
 
 func New(cfg *config.Config, logger *logging.Logger, store *crash.Store, dispatcher *agent.Dispatcher, notifier *notifier.Manager) *Orchestrator {
@@ -65,7 +67,7 @@ func New(cfg *config.Config, logger *logging.Logger, store *crash.Store, dispatc
 		store:      store,
 		dispatcher: dispatcher,
 		notifier:   notifier,
-			status: Status{
+		status: Status{
 			ProcessName: cfg.Monitor.ProcessName,
 			State:       StateWatching,
 			UpdatedAt:   time.Now(),
@@ -95,7 +97,7 @@ func (o *Orchestrator) HandleCrash(ctx context.Context, report crash.Report) err
 	o.setArchive(archivePath)
 
 	if !o.cfg.Repair.AutoRepair {
-		o.transition(StateWatching, "auto repair disabled")
+		o.transition(StateCrashDetected, "auto repair disabled; awaiting manual action")
 		return nil
 	}
 
@@ -108,7 +110,13 @@ func (o *Orchestrator) HandleCrash(ctx context.Context, report crash.Report) err
 			Body:  fmt.Sprintf("attempt %d for %s", attempt, report.ProcessName),
 		})
 
-		result, repairErr := o.dispatcher.Dispatch(ctx, report)
+		result, timeoutWarnings, repairErr := o.dispatcher.Dispatch(ctx, report)
+		for _, warning := range timeoutWarnings {
+			_ = o.notifier.Notify(ctx, notifier.EventAgentTimeout, notifier.Message{
+				Title: "ClawKeep: agent timeout",
+				Body:  warning,
+			})
+		}
 		if repairErr == nil {
 			o.logger.Info("repair succeeded", "agent", result.AgentName, "duration", result.Duration.String())
 			_ = o.notifier.Notify(ctx, notifier.EventRepairSuccess, notifier.Message{
@@ -120,9 +128,9 @@ func (o *Orchestrator) HandleCrash(ctx context.Context, report crash.Report) err
 					o.logger.Warn("restart failed", "error", err.Error())
 				}
 			}
-				o.transition(StateWatching, "repair succeeded")
-				return nil
-			}
+			o.transition(StateWatching, "repair succeeded")
+			return nil
+		}
 
 		o.logger.Warn("repair failed", "attempt", attempt, "error", repairErr.Error())
 		_ = o.notifier.Notify(ctx, notifier.EventRepairFail, notifier.Message{
@@ -132,6 +140,10 @@ func (o *Orchestrator) HandleCrash(ctx context.Context, report crash.Report) err
 	}
 
 	o.transition(StateExhausted, "repair attempts exhausted")
+	_ = o.notifier.Notify(ctx, notifier.EventRepairFail, notifier.Message{
+		Title: "ClawKeep: repair exhausted",
+		Body:  fmt.Sprintf("%s requires manual intervention", report.ProcessName),
+	})
 	return nil
 }
 
@@ -184,6 +196,8 @@ func (o *Orchestrator) Reset() {
 	o.status.RepairAttempts = 0
 	o.status.ExitCode = 0
 	o.status.Detail = "monitor reset"
+	o.restarts = 0
+	o.lastRestart = time.Time{}
 	o.mu.Unlock()
 	o.transition(StateWatching, "manual reset")
 }
@@ -195,6 +209,14 @@ func (o *Orchestrator) UpdatePID(pid int) {
 
 func (o *Orchestrator) PortDown(detail string) {
 	o.transition(StateCrashDetected, detail)
+}
+
+func (o *Orchestrator) ApplyConfig(cfg *config.Config) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.cfg = config.Clone(cfg)
+	o.status.ProcessName = cfg.Monitor.ProcessName
+	o.status.UpdatedAt = time.Now()
 }
 
 func (o *Orchestrator) transition(state State, reason string) {
@@ -256,12 +278,28 @@ func (o *Orchestrator) setExitCode(code int) {
 }
 
 func (o *Orchestrator) restart(ctx context.Context) error {
+	o.mu.Lock()
+	if cooldown := time.Duration(o.cfg.Monitor.RestartCooldownSec) * time.Second; cooldown > 0 && !o.lastRestart.IsZero() && time.Since(o.lastRestart) < cooldown {
+		o.mu.Unlock()
+		return fmt.Errorf("restart cooldown active")
+	}
+	if o.cfg.Monitor.MaxRestartAttempts > 0 && o.restarts >= o.cfg.Monitor.MaxRestartAttempts {
+		o.mu.Unlock()
+		o.transition(StateExhausted, "restart attempts exhausted")
+		return fmt.Errorf("restart attempts exhausted")
+	}
+	o.mu.Unlock()
+
 	o.transition(StateRestarting, "running restart command")
 	command := exec.CommandContext(ctx, o.cfg.Repair.RestartCommand, o.cfg.Repair.RestartArgs...)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("restart command failed: %w: %s", err, strings.TrimSpace(string(output)))
 	}
+	o.mu.Lock()
+	o.restarts++
+	o.lastRestart = time.Now()
+	o.mu.Unlock()
 	_ = o.notifier.Notify(ctx, notifier.EventRestart, notifier.Message{
 		Title: "ClawKeep: restart completed",
 		Body:  fmt.Sprintf("command=%s", o.cfg.Repair.RestartCommand),

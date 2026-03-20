@@ -1,10 +1,10 @@
 import Foundation
 
-struct KeepStatusModel: Equatable {
-    enum State: String {
+struct KeepStatusModel: Codable, Equatable {
+    enum State: String, Codable {
         case unmonitored
         case watching
-        case crashDetected
+        case crashDetected = "crash_detected"
         case collecting
         case repairing
         case restarting
@@ -13,10 +13,10 @@ struct KeepStatusModel: Equatable {
 
     var state: State = .unmonitored
     var processName: String = "openclaw-gateway"
-    var pid: Int32 = 0
-    var exitCode: Int32 = 0
-    var crashCount: Int32 = 0
-    var repairAttempts: Int32 = 0
+    var pid: Int = 0
+    var exitCode: Int = 0
+    var crashCount: Int = 0
+    var repairAttempts: Int = 0
     var lastArchive: String = ""
     var detail: String = ""
     var lastCrashTime: Date?

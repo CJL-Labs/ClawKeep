@@ -8,27 +8,18 @@
 
 /* Begin PBXBuildFile section */
 		04B6E90195C9182A68F33657 /* KeepStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A2611666B06CE761C29C7C /* KeepStatus.swift */; };
-		06CB3D7D2C9F89076446E58F /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = 16A6B74FBDAB67DFE28CBDCC /* SwiftProtobuf */; };
 		08E50434C7E74FBC9DD27651 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4D6B064CD1041EAB2325D50F /* Assets.xcassets */; };
 		094E249301BBA671CEDB0B89 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59A90851777FD5157FD5D56D /* SettingsView.swift */; };
 		0BD859C937A289FCAB942609 /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EC8FC07AF739F4CFD4A859C /* LogView.swift */; };
 		0EBC315A18A793A9B931FA51 /* NotifySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5C076C13ECE2C5348F83167 /* NotifySection.swift */; };
-		1E08269226945DAB47EB6B93 /* GRPCCore in Frameworks */ = {isa = PBXBuildFile; productRef = 330E2456046FDBF8914B8858 /* GRPCCore */; };
-		28958E62FF693DD9030EA523 /* types.pb.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C732802CAA97BC87FAA58E6 /* types.pb.swift */; };
 		2C3DBB5F7097A2570D5826F3 /* StatusBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C444894F72037EFFFD250D84 /* StatusBarView.swift */; };
-		50D7F8B7A4FBC1B4BFD6E8E4 /* GRPCProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = 28D93B705505307472B59A40 /* GRPCProtobuf */; };
 		51A694708372E9C4C397BC01 /* GRPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43AD286598114DB256CC8BDC /* GRPCClient.swift */; };
-		5674BCD0D8388F17F6566C17 /* keep.pb.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1F350AA8782A867F321F05 /* keep.pb.swift */; };
-		69B4B89029531D5E43C609E7 /* config.grpc.swift in Sources */ = {isa = PBXBuildFile; fileRef = E22A0BE80E58995CCA6E63BE /* config.grpc.swift */; };
 		6D09036539507C39618E0F4C /* ClawKeepApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14115DF492CFB502CF9B16C /* ClawKeepApp.swift */; };
-		6EFEE737703E0031E252C443 /* keep.grpc.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5D1325BBF61EAE22DFB448D /* keep.grpc.swift */; };
 		6F55E0F3F6F0652247DE199E /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 642325068606EA72CF34EE1E /* AppState.swift */; };
 		887138B7D2626D32AE26C62A /* MonitorSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D99A306C7BE95EFADE934240 /* MonitorSection.swift */; };
 		A93C83AE598BC08084B753A9 /* DaemonManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24C3726FE86D1D5369980A1B /* DaemonManager.swift */; };
 		B16F5BD40B531203961467E1 /* AgentSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00A88DD5F6DA4AF9CB5AFB2 /* AgentSection.swift */; };
-		C5159972AA663495D217333F /* GRPCNIOTransportHTTP2 in Frameworks */ = {isa = PBXBuildFile; productRef = 2EF41B6C114BE2A628248E88 /* GRPCNIOTransportHTTP2 */; };
-		CDEA14C42BE0A3E7B92321B7 /* types.grpc.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA27E20962605DA38809104C /* types.grpc.swift */; };
-		E8377928888B8BEF608259B9 /* config.pb.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1979C56DEF8E8BB6F12489A /* config.pb.swift */; };
+		D0BDA1A1268D4B19A7770001 /* LogSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0BDA1A1268D4B19A7770002 /* LogSection.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -37,20 +28,15 @@
 		4D6B064CD1041EAB2325D50F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		59A90851777FD5157FD5D56D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		642325068606EA72CF34EE1E /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
-		7C732802CAA97BC87FAA58E6 /* types.pb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = types.pb.swift; sourceTree = "<group>"; };
-		7F1F350AA8782A867F321F05 /* keep.pb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = keep.pb.swift; sourceTree = "<group>"; };
 		86A29513B5B043A8D878E563 /* ClawKeep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClawKeep.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9EC8FC07AF739F4CFD4A859C /* LogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogView.swift; sourceTree = "<group>"; };
 		A14115DF492CFB502CF9B16C /* ClawKeepApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClawKeepApp.swift; sourceTree = "<group>"; };
 		B00A88DD5F6DA4AF9CB5AFB2 /* AgentSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSection.swift; sourceTree = "<group>"; };
 		B5A2611666B06CE761C29C7C /* KeepStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeepStatus.swift; sourceTree = "<group>"; };
-		C1979C56DEF8E8BB6F12489A /* config.pb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = config.pb.swift; sourceTree = "<group>"; };
 		C444894F72037EFFFD250D84 /* StatusBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBarView.swift; sourceTree = "<group>"; };
 		C5C076C13ECE2C5348F83167 /* NotifySection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotifySection.swift; sourceTree = "<group>"; };
 		D99A306C7BE95EFADE934240 /* MonitorSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorSection.swift; sourceTree = "<group>"; };
-		DA27E20962605DA38809104C /* types.grpc.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = types.grpc.swift; sourceTree = "<group>"; };
-		E22A0BE80E58995CCA6E63BE /* config.grpc.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = config.grpc.swift; sourceTree = "<group>"; };
-		F5D1325BBF61EAE22DFB448D /* keep.grpc.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = keep.grpc.swift; sourceTree = "<group>"; };
+		D0BDA1A1268D4B19A7770002 /* LogSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogSection.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -58,10 +44,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1E08269226945DAB47EB6B93 /* GRPCCore in Frameworks */,
-				C5159972AA663495D217333F /* GRPCNIOTransportHTTP2 in Frameworks */,
-				50D7F8B7A4FBC1B4BFD6E8E4 /* GRPCProtobuf in Frameworks */,
-				06CB3D7D2C9F89076446E58F /* SwiftProtobuf in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -87,14 +69,6 @@
 			);
 			sourceTree = "<group>";
 		};
-		25A2E450CAA101390A056452 /* keep */ = {
-			isa = PBXGroup;
-			children = (
-				CE2987E5E082ECD43B735AC2 /* v1 */,
-			);
-			path = keep;
-			sourceTree = "<group>";
-		};
 		4E4EC970464F890F25602B98 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -112,18 +86,11 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
-		BB244851723B36F0819A9AD4 /* proto */ = {
-			isa = PBXGroup;
-			children = (
-				25A2E450CAA101390A056452 /* keep */,
-			);
-			path = proto;
-			sourceTree = "<group>";
-		};
 		BD85704AD1EB2F7F08DFF999 /* Views */ = {
 			isa = PBXGroup;
 			children = (
 				B00A88DD5F6DA4AF9CB5AFB2 /* AgentSection.swift */,
+				D0BDA1A1268D4B19A7770002 /* LogSection.swift */,
 				9EC8FC07AF739F4CFD4A859C /* LogView.swift */,
 				D99A306C7BE95EFADE934240 /* MonitorSection.swift */,
 				C5C076C13ECE2C5348F83167 /* NotifySection.swift */,
@@ -133,27 +100,6 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
-		C0C1B3AFDD7EBC028D5E28F1 /* Gen */ = {
-			isa = PBXGroup;
-			children = (
-				BB244851723B36F0819A9AD4 /* proto */,
-			);
-			path = Gen;
-			sourceTree = "<group>";
-		};
-		CE2987E5E082ECD43B735AC2 /* v1 */ = {
-			isa = PBXGroup;
-			children = (
-				E22A0BE80E58995CCA6E63BE /* config.grpc.swift */,
-				C1979C56DEF8E8BB6F12489A /* config.pb.swift */,
-				F5D1325BBF61EAE22DFB448D /* keep.grpc.swift */,
-				7F1F350AA8782A867F321F05 /* keep.pb.swift */,
-				DA27E20962605DA38809104C /* types.grpc.swift */,
-				7C732802CAA97BC87FAA58E6 /* types.pb.swift */,
-			);
-			path = v1;
-			sourceTree = "<group>";
-		};
 		FB35F78BAEEB1504345CA174 /* ClawKeep */ = {
 			isa = PBXGroup;
 			children = (
@@ -161,7 +107,6 @@
 				A14115DF492CFB502CF9B16C /* ClawKeepApp.swift */,
 				24C3726FE86D1D5369980A1B /* DaemonManager.swift */,
 				43AD286598114DB256CC8BDC /* GRPCClient.swift */,
-				C0C1B3AFDD7EBC028D5E28F1 /* Gen */,
 				8D7455D66EAE30503A0A03BE /* Models */,
 				BD85704AD1EB2F7F08DFF999 /* Views */,
 			);
@@ -185,10 +130,6 @@
 			);
 			name = ClawKeep;
 			packageProductDependencies = (
-				330E2456046FDBF8914B8858 /* GRPCCore */,
-				2EF41B6C114BE2A628248E88 /* GRPCNIOTransportHTTP2 */,
-				28D93B705505307472B59A40 /* GRPCProtobuf */,
-				16A6B74FBDAB67DFE28CBDCC /* SwiftProtobuf */,
 			);
 			productName = ClawKeep;
 			productReference = 86A29513B5B043A8D878E563 /* ClawKeep.app */;
@@ -218,10 +159,6 @@
 			mainGroup = 153583C777C7FEB6B5FCB17F;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				7EA41169036EB045E520F7F3 /* XCRemoteSwiftPackageReference "grpc-swift" */,
-				119CECD99442E4CA8A0CC671 /* XCRemoteSwiftPackageReference "grpc-swift-nio-transport" */,
-				1DE8EF9724BA8E8DC957B566 /* XCRemoteSwiftPackageReference "grpc-swift-protobuf" */,
-				16C6897D04C9173CF0D3D99D /* XCRemoteSwiftPackageReference "swift-protobuf" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4E4EC970464F890F25602B98 /* Products */;
@@ -243,18 +180,13 @@
 				6D09036539507C39618E0F4C /* ClawKeepApp.swift in Sources */,
 				A93C83AE598BC08084B753A9 /* DaemonManager.swift in Sources */,
 				51A694708372E9C4C397BC01 /* GRPCClient.swift in Sources */,
+				D0BDA1A1268D4B19A7770001 /* LogSection.swift in Sources */,
 				0BD859C937A289FCAB942609 /* LogView.swift in Sources */,
 				887138B7D2626D32AE26C62A /* MonitorSection.swift in Sources */,
 				0EBC315A18A793A9B931FA51 /* NotifySection.swift in Sources */,
 				04B6E90195C9182A68F33657 /* KeepStatus.swift in Sources */,
 				094E249301BBA671CEDB0B89 /* SettingsView.swift in Sources */,
 				2C3DBB5F7097A2570D5826F3 /* StatusBarView.swift in Sources */,
-				69B4B89029531D5E43C609E7 /* config.grpc.swift in Sources */,
-				E8377928888B8BEF608259B9 /* config.pb.swift in Sources */,
-				6EFEE737703E0031E252C443 /* keep.grpc.swift in Sources */,
-				5674BCD0D8388F17F6566C17 /* keep.pb.swift in Sources */,
-				CDEA14C42BE0A3E7B92321B7 /* types.grpc.swift in Sources */,
-				28958E62FF693DD9030EA523 /* types.pb.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -441,63 +373,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		119CECD99442E4CA8A0CC671 /* XCRemoteSwiftPackageReference "grpc-swift-nio-transport" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/grpc/grpc-swift-nio-transport.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.0;
-			};
-		};
-		16C6897D04C9173CF0D3D99D /* XCRemoteSwiftPackageReference "swift-protobuf" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-protobuf.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.36.0;
-			};
-		};
-		1DE8EF9724BA8E8DC957B566 /* XCRemoteSwiftPackageReference "grpc-swift-protobuf" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/grpc/grpc-swift-protobuf.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.0;
-			};
-		};
-		7EA41169036EB045E520F7F3 /* XCRemoteSwiftPackageReference "grpc-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/grpc/grpc-swift.git";
-			requirement = {
-				kind = exactVersion;
-				version = 2.2.1;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		16A6B74FBDAB67DFE28CBDCC /* SwiftProtobuf */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 16C6897D04C9173CF0D3D99D /* XCRemoteSwiftPackageReference "swift-protobuf" */;
-			productName = SwiftProtobuf;
-		};
-		28D93B705505307472B59A40 /* GRPCProtobuf */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 1DE8EF9724BA8E8DC957B566 /* XCRemoteSwiftPackageReference "grpc-swift-protobuf" */;
-			productName = GRPCProtobuf;
-		};
-		2EF41B6C114BE2A628248E88 /* GRPCNIOTransportHTTP2 */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 119CECD99442E4CA8A0CC671 /* XCRemoteSwiftPackageReference "grpc-swift-nio-transport" */;
-			productName = GRPCNIOTransportHTTP2;
-		};
-		330E2456046FDBF8914B8858 /* GRPCCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 7EA41169036EB045E520F7F3 /* XCRemoteSwiftPackageReference "grpc-swift" */;
-			productName = GRPCCore;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3911E4312D44F2BE4149D4D7 /* Project object */;
 }

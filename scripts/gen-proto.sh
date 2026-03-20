@@ -8,9 +8,28 @@ SWIFT_OUT="$ROOT/app/ClawKeep/Gen"
 
 mkdir -p "$GO_OUT" "$SWIFT_OUT"
 
+require_command() {
+  local name="$1"
+  if ! command -v "$name" >/dev/null 2>&1; then
+    echo "Missing required command: $name" >&2
+    exit 1
+  fi
+}
+
+require_command protoc
+require_command protoc-gen-go
+require_command protoc-gen-go-grpc
+require_command protoc-gen-swift
+
+GRPC_SWIFT_PLUGIN="$(command -v protoc-gen-grpc-swift-2 || true)"
+if [[ -z "$GRPC_SWIFT_PLUGIN" ]]; then
+  echo "Missing required command: protoc-gen-grpc-swift-2" >&2
+  exit 1
+fi
+
 protoc \
   -I "$PROTO_ROOT" \
-  --plugin=protoc-gen-grpc-swift=/opt/homebrew/bin/protoc-gen-grpc-swift-2 \
+  --plugin=protoc-gen-grpc-swift="$GRPC_SWIFT_PLUGIN" \
   --go_out="$GO_OUT" \
   --go_opt=paths=source_relative \
   --go-grpc_out="$GO_OUT" \

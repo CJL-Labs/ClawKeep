@@ -14,6 +14,9 @@ struct SettingsView: View {
             NotifySection()
                 .environmentObject(appState)
                 .tabItem { Text("通知") }
+            LogSection()
+                .environmentObject(appState)
+                .tabItem { Text("日志") }
         }
         .padding()
         .frame(width: 720, height: 520)

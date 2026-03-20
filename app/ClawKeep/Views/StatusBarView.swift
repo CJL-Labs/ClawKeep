@@ -37,6 +37,11 @@ struct StatusBarView: View {
             Text("PID: \(appState.status.pid)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if let lastCrashTime = appState.status.lastCrashTime {
+                Text("上次崩溃: \(lastCrashTime.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             if !appState.status.detail.isEmpty {
                 Text(appState.status.detail)
                     .font(.caption)

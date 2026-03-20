@@ -13,7 +13,7 @@ import (
 	"claw-keep/keepd/internal/agent"
 	"claw-keep/keepd/internal/config"
 	"claw-keep/keepd/internal/crash"
-	"claw-keep/keepd/internal/grpcserver"
+	"claw-keep/keepd/internal/ipcserver"
 	"claw-keep/keepd/internal/logcollector"
 	"claw-keep/keepd/internal/logging"
 	"claw-keep/keepd/internal/monitor"
@@ -33,7 +33,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger, err := logging.New(cfg.Daemon.LogDir, cfg.Daemon.LogLevel)
+	logger, err := logging.NewWithRetention(cfg.Daemon.LogDir, cfg.Daemon.LogLevel, cfg.Daemon.LogRetainDays)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "init logger: %v\n", err)
 		os.Exit(1)
@@ -62,12 +62,43 @@ func main() {
 		os.Exit(1)
 	}
 	mon := monitor.New(cfg.Monitor, logger)
-	grpcServer := grpcserver.New(*socketPath, configStore, logger, orc, collector, notifyManager)
+	ipcServer := ipcserver.New(*socketPath, configStore, logger, orc, collector, notifyManager)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	logger.Info("keepd started", "config", *configPath, "default_agent", cfg.Agent.DefaultAgent)
+
+	go func() {
+		if err := configStore.Run(ctx); err != nil {
+			logger.Warn("config watcher stopped", "error", err.Error())
+		}
+	}()
+	go func() {
+		updates, cancel := configStore.Subscribe()
+		defer cancel()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case updated, ok := <-updates:
+				if !ok {
+					return
+				}
+				if err := dispatcher.ApplyConfig(updated.Agent, updated.Repair); err != nil {
+					logger.Warn("apply agent config failed", "error", err.Error())
+					continue
+				}
+				mon.ApplyConfig(updated.Monitor)
+				collector.ApplyConfig(updated.Log)
+				notifyManager.ApplyConfig(updated.Notify)
+				orc.ApplyConfig(updated)
+				if err := logger.ApplyConfig(updated.Daemon.LogDir, updated.Daemon.LogLevel, updated.Daemon.LogRetainDays); err != nil {
+					fmt.Fprintf(os.Stderr, "apply logger config: %v\n", err)
+				}
+			}
+		}
+	}()
 
 	if *simulateCrash {
 		report := crash.Report{
@@ -95,8 +126,8 @@ func main() {
 	}()
 	go mon.Run(ctx)
 	go func() {
-		if err := grpcServer.Run(ctx); err != nil {
-			logger.Error("grpc server stopped", "error", err.Error())
+		if err := ipcServer.Run(ctx); err != nil {
+			logger.Error("ipc server stopped", "error", err.Error())
 			stop()
 		}
 	}()

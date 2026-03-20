@@ -11,24 +11,41 @@ import (
 )
 
 type Logger struct {
-	level string
-	out   io.Writer
-	mu    sync.Mutex
+	level      string
+	logDir     string
+	retainDays int
+	file       *os.File
+	fileDate   string
+	mu         sync.Mutex
 }
 
 func New(logDir string, level string) (*Logger, error) {
+	return NewWithRetention(logDir, level, 7)
+}
+
+func NewWithRetention(logDir string, level string, retainDays int) (*Logger, error) {
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		return nil, err
 	}
-	filePath := filepath.Join(logDir, "keepd.log")
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
+	logger := &Logger{
+		level:      strings.ToLower(level),
+		logDir:     logDir,
+		retainDays: retainDays,
+	}
+	if err := logger.rotateIfNeededLocked(time.Now()); err != nil {
 		return nil, err
 	}
-	return &Logger{
-		level: strings.ToLower(level),
-		out:   io.MultiWriter(os.Stdout, file),
-	}, nil
+	return logger, nil
+}
+
+func (l *Logger) ApplyConfig(logDir string, level string, retainDays int) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.level = strings.ToLower(level)
+	l.logDir = logDir
+	l.retainDays = retainDays
+	return l.rotateIfNeededLocked(time.Now())
 }
 
 func (l *Logger) Debug(message string, keyvals ...any) {
@@ -66,7 +83,11 @@ func (l *Logger) log(level string, message string, keyvals ...any) {
 	payload, _ := json.Marshal(entry)
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	_, _ = l.out.Write(append(payload, '\n'))
+	if err := l.rotateIfNeededLocked(time.Now()); err != nil {
+		return
+	}
+	writer := io.MultiWriter(os.Stdout, l.file)
+	_, _ = writer.Write(append(payload, '\n'))
 }
 
 func (l *Logger) enabled(level string) bool {
@@ -85,4 +106,52 @@ func (l *Logger) enabled(level string) bool {
 		target = rank["info"]
 	}
 	return target >= current
+}
+
+func (l *Logger) rotateIfNeededLocked(now time.Time) error {
+	if err := os.MkdirAll(l.logDir, 0o755); err != nil {
+		return err
+	}
+	date := now.Format("2006-01-02")
+	if l.file != nil && l.fileDate == date {
+		return l.pruneLocked(now)
+	}
+	if l.file != nil {
+		_ = l.file.Close()
+		l.file = nil
+	}
+	filePath := filepath.Join(l.logDir, "keepd-"+date+".log")
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	l.file = file
+	l.fileDate = date
+	return l.pruneLocked(now)
+}
+
+func (l *Logger) pruneLocked(now time.Time) error {
+	if l.retainDays <= 0 {
+		return nil
+	}
+	entries, err := os.ReadDir(l.logDir)
+	if err != nil {
+		return err
+	}
+	cutoff := now.AddDate(0, 0, -l.retainDays)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "keepd-") || !strings.HasSuffix(entry.Name(), ".log") {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+		if info.ModTime().Before(cutoff) {
+			if err := os.Remove(filepath.Join(l.logDir, entry.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

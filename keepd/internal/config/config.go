@@ -3,99 +3,101 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
 )
 
 type Config struct {
-	Monitor MonitorConfig `toml:"monitor"`
-	Log     LogConfig     `toml:"log"`
-	Agent   AgentConfig   `toml:"agent"`
-	Repair  RepairConfig  `toml:"repair"`
-	Notify  NotifyConfig  `toml:"notify"`
-	Daemon  DaemonConfig  `toml:"daemon"`
+	Monitor MonitorConfig `toml:"monitor" json:"monitor"`
+	Log     LogConfig     `toml:"log" json:"log"`
+	Agent   AgentConfig   `toml:"agent" json:"agent"`
+	Repair  RepairConfig  `toml:"repair" json:"repair"`
+	Notify  NotifyConfig  `toml:"notify" json:"notify"`
+	Daemon  DaemonConfig  `toml:"daemon" json:"daemon"`
 }
 
 type MonitorConfig struct {
-	ProcessName        string `toml:"process_name"`
-	PIDFile            string `toml:"pid_file"`
-	Host               string `toml:"host"`
-	Port               int    `toml:"port"`
-	EnableKqueue       bool   `toml:"enable_kqueue"`
-	EnableTCPProbe     bool   `toml:"enable_tcp_probe"`
-	TCPProbeTimeoutMS  int    `toml:"tcp_probe_timeout_ms"`
-	HealthCommand      string `toml:"health_command"`
-	RestartCooldownSec int    `toml:"restart_cooldown_sec"`
-	MaxRestartAttempts int    `toml:"max_restart_attempts"`
+	ProcessName        string `toml:"process_name" json:"process_name"`
+	PIDFile            string `toml:"pid_file" json:"pid_file"`
+	Host               string `toml:"host" json:"host"`
+	Port               int    `toml:"port" json:"port"`
+	EnableKqueue       bool   `toml:"enable_kqueue" json:"enable_kqueue"`
+	EnableTCPProbe     bool   `toml:"enable_tcp_probe" json:"enable_tcp_probe"`
+	TCPProbeTimeoutMS  int    `toml:"tcp_probe_timeout_ms" json:"tcp_probe_timeout_ms"`
+	HealthCommand      string `toml:"health_command" json:"health_command"`
+	RestartCooldownSec int    `toml:"restart_cooldown_sec" json:"restart_cooldown_sec"`
+	MaxRestartAttempts int    `toml:"max_restart_attempts" json:"max_restart_attempts"`
 }
 
 type LogConfig struct {
-	WatchPaths       []string `toml:"watch_paths"`
-	CrashArchiveDir  string   `toml:"crash_archive_dir"`
-	TailLinesOnCrash int      `toml:"tail_lines_on_crash"`
-	MaxArchiveDays   int      `toml:"max_archive_days"`
+	WatchPaths       []string `toml:"watch_paths" json:"watch_paths"`
+	CrashArchiveDir  string   `toml:"crash_archive_dir" json:"crash_archive_dir"`
+	TailLinesOnCrash int      `toml:"tail_lines_on_crash" json:"tail_lines_on_crash"`
+	MaxArchiveDays   int      `toml:"max_archive_days" json:"max_archive_days"`
 }
 
 type AgentConfig struct {
-	DefaultAgent string        `toml:"default_agent"`
-	Agents       []AgentEntry  `toml:"agents"`
+	DefaultAgent string       `toml:"default_agent" json:"default_agent"`
+	Agents       []AgentEntry `toml:"agents" json:"agents"`
 }
 
 type AgentEntry struct {
-	Name       string            `toml:"name"`
-	CLIPath    string            `toml:"cli_path"`
-	CLIArgs    []string          `toml:"cli_args"`
-	WorkingDir string            `toml:"working_dir"`
-	TimeoutSec int               `toml:"timeout_sec"`
-	Env        map[string]string `toml:"env"`
+	Name       string            `toml:"name" json:"name"`
+	CLIPath    string            `toml:"cli_path" json:"cli_path"`
+	CLIArgs    []string          `toml:"cli_args" json:"cli_args"`
+	WorkingDir string            `toml:"working_dir" json:"working_dir"`
+	TimeoutSec int               `toml:"timeout_sec" json:"timeout_sec"`
+	Env        map[string]string `toml:"env" json:"env"`
 }
 
 type RepairConfig struct {
-	AutoRepair        bool     `toml:"auto_repair"`
-	AutoRestart       bool     `toml:"auto_restart"`
-	RestartCommand    string   `toml:"restart_command"`
-	RestartArgs       []string `toml:"restart_args"`
-	MaxRepairAttempts int      `toml:"max_repair_attempts"`
-	PromptTemplate    string   `toml:"prompt_template"`
+	AutoRepair        bool     `toml:"auto_repair" json:"auto_repair"`
+	AutoRestart       bool     `toml:"auto_restart" json:"auto_restart"`
+	RestartCommand    string   `toml:"restart_command" json:"restart_command"`
+	RestartArgs       []string `toml:"restart_args" json:"restart_args"`
+	MaxRepairAttempts int      `toml:"max_repair_attempts" json:"max_repair_attempts"`
+	PromptTemplate    string   `toml:"prompt_template" json:"prompt_template"`
 }
 
 type NotifyConfig struct {
-	NotifyOn []string     `toml:"notify_on"`
-	Feishu   FeishuConfig `toml:"feishu"`
-	Bark     BarkConfig   `toml:"bark"`
-	SMTP     SMTPConfig   `toml:"smtp"`
+	NotifyOn []string     `toml:"notify_on" json:"notify_on"`
+	Feishu   FeishuConfig `toml:"feishu" json:"feishu"`
+	Bark     BarkConfig   `toml:"bark" json:"bark"`
+	SMTP     SMTPConfig   `toml:"smtp" json:"smtp"`
 }
 
 type FeishuConfig struct {
-	Enabled    bool   `toml:"enabled"`
-	WebhookURL string `toml:"webhook_url"`
-	Secret     string `toml:"secret"`
+	Enabled    bool   `toml:"enabled" json:"enabled"`
+	WebhookURL string `toml:"webhook_url" json:"webhook_url"`
+	Secret     string `toml:"secret" json:"secret"`
 }
 
 type BarkConfig struct {
-	Enabled   bool   `toml:"enabled"`
-	ServerURL string `toml:"server_url"`
-	DeviceKey string `toml:"device_key"`
+	Enabled   bool   `toml:"enabled" json:"enabled"`
+	ServerURL string `toml:"server_url" json:"server_url"`
+	DeviceKey string `toml:"device_key" json:"device_key"`
 }
 
 type SMTPConfig struct {
-	Enabled  bool     `toml:"enabled"`
-	Host     string   `toml:"host"`
-	Port     int      `toml:"port"`
-	Username string   `toml:"username"`
-	Password string   `toml:"password"`
-	From     string   `toml:"from"`
-	To       []string `toml:"to"`
-	UseTLS   bool     `toml:"use_tls"`
+	Enabled  bool     `toml:"enabled" json:"enabled"`
+	Host     string   `toml:"host" json:"host"`
+	Port     int      `toml:"port" json:"port"`
+	Username string   `toml:"username" json:"username"`
+	Password string   `toml:"password" json:"password"`
+	From     string   `toml:"from" json:"from"`
+	To       []string `toml:"to" json:"to"`
+	UseTLS   bool     `toml:"use_tls" json:"use_tls"`
 }
 
 type DaemonConfig struct {
-	LogLevel      string `toml:"log_level"`
-	LogDir        string `toml:"log_dir"`
-	LogRetainDays int    `toml:"log_retain_days"`
+	LogLevel      string `toml:"log_level" json:"log_level"`
+	LogDir        string `toml:"log_dir" json:"log_dir"`
+	LogRetainDays int    `toml:"log_retain_days" json:"log_retain_days"`
 }
 
 func DefaultConfigPath() string {
@@ -216,4 +218,23 @@ func ExpandPath(path string) (string, error) {
 		path = filepath.Join(home, path[2:])
 	}
 	return filepath.Clean(path), nil
+}
+
+func Clone(src *Config) *Config {
+	if src == nil {
+		return &Config{}
+	}
+
+	dst := *src
+	dst.Log.WatchPaths = slices.Clone(src.Log.WatchPaths)
+	dst.Notify.NotifyOn = slices.Clone(src.Notify.NotifyOn)
+	dst.Notify.SMTP.To = slices.Clone(src.Notify.SMTP.To)
+	dst.Repair.RestartArgs = slices.Clone(src.Repair.RestartArgs)
+	dst.Agent.Agents = make([]AgentEntry, len(src.Agent.Agents))
+	for index, agent := range src.Agent.Agents {
+		dst.Agent.Agents[index] = agent
+		dst.Agent.Agents[index].CLIArgs = slices.Clone(agent.CLIArgs)
+		dst.Agent.Agents[index].Env = maps.Clone(agent.Env)
+	}
+	return &dst
 }

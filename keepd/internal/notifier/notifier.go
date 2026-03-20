@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"net/smtp"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"claw-keep/keepd/internal/config"
@@ -26,6 +28,7 @@ const (
 	EventRepairSuccess Event = "repair_success"
 	EventRepairFail    Event = "repair_fail"
 	EventRestart       Event = "restart"
+	EventAgentTimeout  Event = "agent_timeout"
 )
 
 type Message struct {
@@ -38,43 +41,69 @@ type Sender interface {
 }
 
 type Manager struct {
+	mu            sync.RWMutex
+	config        config.NotifyConfig
 	enabledEvents map[Event]struct{}
-	senders       []Sender
+	senders       map[string]Sender
 	logger        *logging.Logger
 }
 
 func NewManager(cfg config.NotifyConfig, logger *logging.Logger) *Manager {
-	events := make(map[Event]struct{}, len(cfg.NotifyOn))
-	for _, event := range cfg.NotifyOn {
-		events[Event(event)] = struct{}{}
-	}
-	var senders []Sender
-	if cfg.Feishu.Enabled && cfg.Feishu.WebhookURL != "" {
-		senders = append(senders, &feishuSender{cfg: cfg.Feishu})
-	}
-	if cfg.Bark.Enabled && cfg.Bark.DeviceKey != "" {
-		senders = append(senders, &barkSender{cfg: cfg.Bark})
-	}
-	if cfg.SMTP.Enabled && cfg.SMTP.Host != "" && len(cfg.SMTP.To) > 0 {
-		senders = append(senders, &smtpSender{cfg: cfg.SMTP})
-	}
-	return &Manager{
-		enabledEvents: events,
-		senders:       senders,
-		logger:        logger,
-	}
+	manager := &Manager{logger: logger}
+	manager.ApplyConfig(cfg)
+	return manager
 }
 
 func (m *Manager) Notify(ctx context.Context, event Event, message Message) error {
+	m.mu.RLock()
 	if _, ok := m.enabledEvents[event]; !ok {
+		m.mu.RUnlock()
 		return nil
 	}
+	senders := make([]Sender, 0, len(m.senders))
 	for _, sender := range m.senders {
+		senders = append(senders, sender)
+	}
+	m.mu.RUnlock()
+	for _, sender := range senders {
 		if err := sender.Send(ctx, event, message); err != nil {
 			m.logger.Warn("notification failed", "event", string(event), "error", err.Error())
 		}
 	}
 	return nil
+}
+
+func (m *Manager) ApplyConfig(cfg config.NotifyConfig) {
+	events := make(map[Event]struct{}, len(cfg.NotifyOn))
+	for _, event := range cfg.NotifyOn {
+		events[Event(event)] = struct{}{}
+	}
+	senders := make(map[string]Sender)
+	if cfg.Feishu.Enabled && cfg.Feishu.WebhookURL != "" {
+		senders["feishu"] = &feishuSender{cfg: cfg.Feishu}
+	}
+	if cfg.Bark.Enabled && cfg.Bark.DeviceKey != "" {
+		senders["bark"] = &barkSender{cfg: cfg.Bark}
+	}
+	if cfg.SMTP.Enabled && cfg.SMTP.Host != "" && len(cfg.SMTP.To) > 0 {
+		senders["smtp"] = &smtpSender{cfg: cfg.SMTP}
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.config = cfg
+	m.enabledEvents = events
+	m.senders = senders
+}
+
+func (m *Manager) TestChannel(ctx context.Context, channel string, message Message) error {
+	m.mu.RLock()
+	sender, ok := m.senders[strings.ToLower(channel)]
+	m.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("notification channel %q is not configured", channel)
+	}
+	return sender.Send(ctx, EventCrash, message)
 }
 
 type feishuSender struct {
@@ -158,16 +187,63 @@ type smtpSender struct {
 func (s *smtpSender) Send(_ context.Context, event Event, message Message) error {
 	address := fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)
 	auth := smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)
+	plainText := message.Body
+	htmlBody := "<html><body><h3>" + escapeHTML(message.Title) + "</h3><pre style=\"font-family: Menlo, monospace; white-space: pre-wrap;\">" + escapeHTML(message.Body) + "</pre></body></html>"
 	headers := []string{
 		"From: " + s.cfg.From,
 		"To: " + strings.Join(s.cfg.To, ","),
 		"Subject: " + message.Title,
 		"MIME-Version: 1.0",
+		"Content-Type: multipart/alternative; boundary=clawkeep-boundary",
+		"",
+		"--clawkeep-boundary",
 		"Content-Type: text/plain; charset=UTF-8",
 		"",
-		message.Body,
+		plainText,
+		"",
+		"--clawkeep-boundary",
+		"Content-Type: text/html; charset=UTF-8",
+		"",
+		htmlBody,
+		"",
+		"--clawkeep-boundary--",
 	}
-	return smtp.SendMail(address, auth, s.cfg.From, s.cfg.To, []byte(strings.Join(headers, "\r\n")))
+	payload := []byte(strings.Join(headers, "\r\n"))
+	if !s.cfg.UseTLS {
+		return smtp.SendMail(address, auth, s.cfg.From, s.cfg.To, payload)
+	}
+
+	connection, err := tls.Dial("tcp", address, &tls.Config{ServerName: s.cfg.Host, MinVersion: tls.VersionTLS12})
+	if err != nil {
+		return err
+	}
+	defer connection.Close()
+
+	client, err := smtp.NewClient(connection, s.cfg.Host)
+	if err != nil {
+		return err
+	}
+	defer client.Quit()
+	if err := client.Auth(auth); err != nil {
+		return err
+	}
+	if err := client.Mail(s.cfg.From); err != nil {
+		return err
+	}
+	for _, recipient := range s.cfg.To {
+		if err := client.Rcpt(recipient); err != nil {
+			return err
+		}
+	}
+	writer, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := writer.Write(payload); err != nil {
+		_ = writer.Close()
+		return err
+	}
+	return writer.Close()
 }
 
 func signFeishu(timestamp string, secret string) string {
@@ -176,4 +252,15 @@ func signFeishu(timestamp string, secret string) string {
 	_, _ = sum.Write([]byte(payload))
 	signature := sum.Sum(nil)
 	return base64.StdEncoding.EncodeToString(signature)
+}
+
+func escapeHTML(value string) string {
+	replacer := strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+		"\"", "&quot;",
+		"'", "&#39;",
+	)
+	return replacer.Replace(value)
 }

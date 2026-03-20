@@ -21,3 +21,39 @@ GitHub repositories do not support a dedicated per-project icon in code. The usu
 
 - show the logo at the top of `README.md`
 - optionally upload the same image in GitHub repository `Settings` -> `General` -> `Social preview`
+
+## Local Build
+
+Build an unsigned app bundle for local testing:
+
+```bash
+./scripts/package-local.sh
+```
+
+Output:
+
+- app bundle: `build/Build/Products/Debug/ClawKeep.app`
+- zip artifact: `dist/ClawKeep-macos-Debug-unsigned.zip`
+
+Build an unsigned Release artifact:
+
+```bash
+./scripts/package.sh
+```
+
+If you need to regenerate protobuf code first:
+
+```bash
+SKIP_PROTO=0 ./scripts/package-local.sh
+```
+
+## GitHub Actions
+
+GitHub Actions builds an unsigned macOS Release artifact on every push, pull request, and manual trigger, then uploads:
+
+- `dist/ClawKeep-macos-Release-unsigned.zip`
+- `build/Build/Products/Release/ClawKeep.app`
+
+When the pushed ref is a Git tag, the workflow also creates a GitHub Release and attaches the zip artifact.
+
+The CI build now uses the lightweight local IPC version of the app and no longer depends on the Swift gRPC package chain.

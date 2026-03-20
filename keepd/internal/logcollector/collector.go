@@ -18,20 +18,21 @@ import (
 )
 
 type Entry struct {
-	Time    time.Time
-	Level   string
-	Source  string
-	Message string
-	RawLine string
+	Time    time.Time `json:"time"`
+	Level   string    `json:"level"`
+	Source  string    `json:"source"`
+	Message string    `json:"message"`
+	RawLine string    `json:"raw_line"`
 }
 
 type Collector struct {
-	cfg      config.LogConfig
-	logger   *logging.Logger
-	watcher  *fsnotify.Watcher
-	offsets  map[string]int64
-	ring     []Entry
-	ringSize int
+	cfg         config.LogConfig
+	logger      *logging.Logger
+	watcher     *fsnotify.Watcher
+	offsets     map[string]int64
+	ring        []Entry
+	ringSize    int
+	watchedPath map[string]struct{}
 
 	mu          sync.Mutex
 	subscribers map[int]chan Entry
@@ -53,15 +54,14 @@ func New(cfg config.LogConfig, logger *logging.Logger) (*Collector, error) {
 		watcher:     watcher,
 		offsets:     make(map[string]int64),
 		ringSize:    size,
+		watchedPath: make(map[string]struct{}),
 		subscribers: make(map[int]chan Entry),
 	}, nil
 }
 
 func (c *Collector) Run(ctx context.Context) error {
-	for _, path := range c.cfg.WatchPaths {
-		if err := c.watchPath(path); err != nil {
-			c.logger.Warn("watch path failed", "path", path, "error", err.Error())
-		}
+	if err := c.syncWatchPaths(c.cfg.WatchPaths); err != nil {
+		c.logger.Warn("sync watch paths failed", "error", err.Error())
 	}
 
 	for {
@@ -87,6 +87,22 @@ func (c *Collector) Run(ctx context.Context) error {
 			}
 			c.logger.Warn("log watcher error", "error", err.Error())
 		}
+	}
+}
+
+func (c *Collector) ApplyConfig(cfg config.LogConfig) {
+	c.mu.Lock()
+	c.cfg = cfg
+	if cfg.TailLinesOnCrash > 0 {
+		c.ringSize = cfg.TailLinesOnCrash
+		if len(c.ring) > c.ringSize {
+			c.ring = c.ring[len(c.ring)-c.ringSize:]
+		}
+	}
+	c.mu.Unlock()
+
+	if err := c.syncWatchPaths(cfg.WatchPaths); err != nil {
+		c.logger.Warn("apply log config failed", "error", err.Error())
 	}
 }
 
@@ -148,10 +164,13 @@ func (c *Collector) TailBySuffix(suffix string, lines int) string {
 func (c *Collector) watchPath(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return c.watchMissingPath(path)
+		}
 		return err
 	}
 	if info.IsDir() {
-		if err := c.watcher.Add(path); err != nil {
+		if err := c.addWatch(path); err != nil {
 			return err
 		}
 		entries, err := os.ReadDir(path)
@@ -166,7 +185,7 @@ func (c *Collector) watchPath(path string) error {
 		}
 		return nil
 	}
-	if err := c.watcher.Add(filepath.Dir(path)); err != nil {
+	if err := c.addWatch(filepath.Dir(path)); err != nil {
 		return err
 	}
 	c.readAppended(path)
@@ -267,4 +286,58 @@ func max(left int, right int) int {
 		return left
 	}
 	return right
+}
+
+func (c *Collector) syncWatchPaths(paths []string) error {
+	c.mu.Lock()
+	current := make(map[string]struct{}, len(c.watchedPath))
+	for path := range c.watchedPath {
+		current[path] = struct{}{}
+	}
+	c.mu.Unlock()
+
+	desired := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		desired[path] = struct{}{}
+		if _, ok := current[path]; ok {
+			delete(current, path)
+			continue
+		}
+		if err := c.watchPath(path); err != nil {
+			c.logger.Warn("watch path failed", "path", path, "error", err.Error())
+		}
+	}
+	for path := range current {
+		_ = c.watcher.Remove(path)
+		c.mu.Lock()
+		delete(c.watchedPath, path)
+		c.mu.Unlock()
+	}
+	return nil
+}
+
+func (c *Collector) addWatch(path string) error {
+	c.mu.Lock()
+	if _, ok := c.watchedPath[path]; ok {
+		c.mu.Unlock()
+		return nil
+	}
+	c.mu.Unlock()
+
+	if err := c.watcher.Add(path); err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	c.watchedPath[path] = struct{}{}
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *Collector) watchMissingPath(path string) error {
+	parent := filepath.Dir(path)
+	if parent == "." || parent == "/" {
+		return nil
+	}
+	return c.addWatch(parent)
 }

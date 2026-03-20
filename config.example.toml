@@ -57,7 +57,7 @@ openclaw-gateway 进程崩溃了。
 """
 
 [notify]
-notify_on = ["crash", "repair_success", "repair_fail"]
+notify_on = ["crash", "repair_start", "repair_success", "repair_fail", "restart", "agent_timeout"]
 
 [notify.feishu]
 enabled = false
