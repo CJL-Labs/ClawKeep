@@ -1,3 +1,7 @@
 app/.build/
 sentineld/sentineld
 .DS_Store
+.spm-cache/
+build/
+dist/
+DerivedData/
