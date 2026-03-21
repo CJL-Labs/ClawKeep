@@ -97,7 +97,7 @@ struct ClawKeepApp: App {
             StatusBarView()
                 .environmentObject(appState)
         } label: {
-            Label("ClawKeep", systemImage: appState.status.symbolName)
+            LobsterMenuBarLabel(state: appState.mascotState, tick: appState.menuBarAnimationTick)
         }
         .menuBarExtraStyle(.window)
     }

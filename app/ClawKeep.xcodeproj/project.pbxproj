@@ -13,6 +13,7 @@
 		0BD859C937A289FCAB942609 /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EC8FC07AF739F4CFD4A859C /* LogView.swift */; };
 		0EBC315A18A793A9B931FA51 /* NotifySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5C076C13ECE2C5348F83167 /* NotifySection.swift */; };
 		2C3DBB5F7097A2570D5826F3 /* StatusBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C444894F72037EFFFD250D84 /* StatusBarView.swift */; };
+		3A0F2E1D4C5B6A7988776655 /* LobsterSpriteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B8A7C6D5E4F302112233445 /* LobsterSpriteView.swift */; };
 		51A694708372E9C4C397BC01 /* IPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43AD286598114DB256CC8BDC /* IPCClient.swift */; };
 		6D09036539507C39618E0F4C /* ClawKeepApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14115DF492CFB502CF9B16C /* ClawKeepApp.swift */; };
 		6F55E0F3F6F0652247DE199E /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 642325068606EA72CF34EE1E /* AppState.swift */; };
@@ -29,6 +30,7 @@
 		59A90851777FD5157FD5D56D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		642325068606EA72CF34EE1E /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		86A29513B5B043A8D878E563 /* ClawKeep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClawKeep.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9B8A7C6D5E4F302112233445 /* LobsterSpriteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LobsterSpriteView.swift; sourceTree = "<group>"; };
 		9EC8FC07AF739F4CFD4A859C /* LogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogView.swift; sourceTree = "<group>"; };
 		A14115DF492CFB502CF9B16C /* ClawKeepApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClawKeepApp.swift; sourceTree = "<group>"; };
 		B00A88DD5F6DA4AF9CB5AFB2 /* AgentSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSection.swift; sourceTree = "<group>"; };
@@ -95,6 +97,7 @@
 				D99A306C7BE95EFADE934240 /* MonitorSection.swift */,
 				C5C076C13ECE2C5348F83167 /* NotifySection.swift */,
 				59A90851777FD5157FD5D56D /* SettingsView.swift */,
+				9B8A7C6D5E4F302112233445 /* LobsterSpriteView.swift */,
 				C444894F72037EFFFD250D84 /* StatusBarView.swift */,
 			);
 			path = Views;
@@ -186,6 +189,7 @@
 				0EBC315A18A793A9B931FA51 /* NotifySection.swift in Sources */,
 				04B6E90195C9182A68F33657 /* KeepStatus.swift in Sources */,
 				094E249301BBA671CEDB0B89 /* SettingsView.swift in Sources */,
+				3A0F2E1D4C5B6A7988776655 /* LobsterSpriteView.swift in Sources */,
 				2C3DBB5F7097A2570D5826F3 /* StatusBarView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

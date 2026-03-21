@@ -1,6 +1,111 @@
 import Foundation
 import SwiftUI
 
+enum StatusMascotState: String, Equatable {
+    case idle
+    case busy
+    case restarting
+    case error
+    case fixing
+    case success
+    case failed
+
+    var title: String {
+        switch self {
+        case .idle:
+            return "空闲（Idle）"
+        case .busy:
+            return "忙碌（Busy）"
+        case .restarting:
+            return "重启中（Restarting）"
+        case .error:
+            return "异常（Error）"
+        case .fixing:
+            return "开始修复（Fixing）"
+        case .success:
+            return "修复成功（Success）"
+        case .failed:
+            return "修复失败（Failed）"
+        }
+    }
+
+    var posture: String {
+        switch self {
+        case .idle:
+            return "放松 🙂"
+        case .busy:
+            return "专注 😐"
+        case .restarting:
+            return "迷糊 😵"
+        case .error:
+            return "惊讶 😳"
+        case .fixing:
+            return "认真 😤"
+        case .success:
+            return "开心 😄"
+        case .failed:
+            return "失落 😞"
+        }
+    }
+
+    var action: String {
+        switch self {
+        case .idle:
+            return "轻微呼吸 + 偶尔眨眼"
+        case .busy:
+            return "快速挥动钳子 / 操作"
+        case .restarting:
+            return "原地转圈 / loading"
+        case .error:
+            return "抖动 + 红色闪烁"
+        case .fixing:
+            return "拿工具敲敲打打"
+        case .success:
+            return "跳一下 + 举钳子"
+        case .failed:
+            return "坐下 / 低头不动"
+        }
+    }
+
+    var promptKeywords: String {
+        switch self {
+        case .idle:
+            return "calm, breathing, idle, minimal"
+        case .busy:
+            return "fast working, typing, busy"
+        case .restarting:
+            return "spinning, reboot, loading"
+        case .error:
+            return "alert, shaking, error"
+        case .fixing:
+            return "fixing, wrench, repair"
+        case .success:
+            return "celebrate, success, happy"
+        case .failed:
+            return "sad, tired, failed"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .idle:
+            return .green
+        case .busy:
+            return .blue
+        case .restarting:
+            return .orange
+        case .error:
+            return .red
+        case .fixing:
+            return .yellow
+        case .success:
+            return .mint
+        case .failed:
+            return .gray
+        }
+    }
+}
+
 @MainActor
 final class AppState: ObservableObject {
     static let defaultPromptTemplate = """
@@ -26,6 +131,9 @@ final class AppState: ObservableObject {
     @Published var isConnected = false
     @Published var errorMessage = ""
     @Published var availableAgents: [DetectedAgent] = []
+    @Published private(set) var menuBarAnimationTick = 0
+    @Published private(set) var isAgentLoopBusy = false
+    @Published private(set) var lastAgentLoopSignalAt: Date?
     let socketPath = (NSTemporaryDirectory() as NSString).appendingPathComponent("claw-keep.sock")
     let configPath = ("~/.claw-keep/config.toml" as NSString).expandingTildeInPath
     let defaultNotifyEvents = ["crash", "repair_start", "repair_success", "repair_fail", "agent_timeout"]
@@ -34,16 +142,33 @@ final class AppState: ObservableObject {
     private let ipcClient = IPCClient()
     private var didStart = false
     private var connectionTask: Task<Void, Never>?
+    private var menuBarAnimationTask: Task<Void, Never>?
     private var autosaveTask: Task<Void, Never>?
     private var statusPollTask: Task<Void, Never>?
+    private var activityPollTask: Task<Void, Never>?
     private var suppressAutosave = false
     private var lastPersistedConfig: AppConfig?
     private var isPersistingConfig = false
     private var pendingConfigSave = false
+    private var recentRepairSuccessAt: Date?
+    private var recentRepairFailureAt: Date?
+    private var sessionIndexPaths: [String] = []
+    private var sessionFileFingerprints: [String: UInt64] = [:]
+    private var lastSessionPathRefreshAt: Date = .distantPast
+
+    nonisolated private static let sessionPathRefreshIntervalSec: TimeInterval = 8
+    nonisolated private static let sessionActiveWindowMs: Int64 = 7_000
+    nonisolated private static let loopBusyHoldSeconds: TimeInterval = 2.8
+    nonisolated private static let recentOutcomeDisplaySeconds: TimeInterval = 6
+    nonisolated private static let sessionTailScanBytes: Int = 8_000
+    nonisolated private static let busyPollIntervalNs: UInt64 = 350_000_000
+    nonisolated private static let idlePollIntervalNs: UInt64 = 700_000_000
 
     func bootstrap() {
         guard !didStart else { return }
         didStart = true
+        startMenuBarAnimation()
+        startAgentLoopActivityPolling()
 
         Task {
             let configPath = self.configPath
@@ -75,7 +200,7 @@ final class AppState: ObservableObject {
             do {
                 try await ipcClient.connect(socketPath: socketPath)
                 applyConfigFromDaemon(try await ipcClient.fetchConfig())
-                status = try await ipcClient.fetchStatus()
+                applyStatusUpdate(try await ipcClient.fetchStatus())
                 isConnected = true
                 errorMessage = ""
                 backoffSeconds = 1
@@ -83,7 +208,7 @@ final class AppState: ObservableObject {
 
                 try await ipcClient.subscribeStatus { [weak self] newStatus in
                     await MainActor.run {
-                        self?.status = newStatus
+                        self?.applyStatusUpdate(newStatus)
                     }
                 }
             } catch {
@@ -93,7 +218,10 @@ final class AppState: ObservableObject {
                 statusPollTask?.cancel()
                 statusPollTask = nil
                 isConnected = false
-                status.state = .unmonitored
+                var disconnectedStatus = status
+                disconnectedStatus.state = .unmonitored
+                disconnectedStatus.detail = "正在等待重新连接 keepd。"
+                applyStatusUpdate(disconnectedStatus)
                 errorMessage = error.localizedDescription
                 let delay = UInt64(backoffSeconds) * 1_000_000_000
                 try? await Task.sleep(nanoseconds: delay)
@@ -109,7 +237,7 @@ final class AppState: ObservableObject {
                 do {
                     let latestStatus = try await self.ipcClient.fetchStatus()
                     await MainActor.run {
-                        self.status = latestStatus
+                        self.applyStatusUpdate(latestStatus)
                     }
                 } catch {
                     return
@@ -191,6 +319,57 @@ final class AppState: ObservableObject {
         daemonRunning && isConnected && status.state == .watching
     }
 
+    var mascotState: StatusMascotState {
+        let now = Date()
+        if status.state == .repairing || status.state == .collecting {
+            return .fixing
+        }
+        if status.state == .restarting {
+            return .restarting
+        }
+        if status.state == .crashDetected {
+            return .error
+        }
+        if status.state == .exhausted {
+            return .failed
+        }
+        if status.state == .maintenance,
+           (status.detail.contains("重启") || status.detail.contains("恢复") || status.detail.contains("宽限期")) {
+            return .restarting
+        }
+        if let successAt = recentRepairSuccessAt,
+           now.timeIntervalSince(successAt) <= Self.recentOutcomeDisplaySeconds {
+            return .success
+        }
+        if let failureAt = recentRepairFailureAt,
+           now.timeIntervalSince(failureAt) <= Self.recentOutcomeDisplaySeconds {
+            return .failed
+        }
+        if !daemonRunning || !isConnected || status.state == .unmonitored {
+            return .error
+        }
+        return isAgentLoopBusy ? .busy : .idle
+    }
+
+    var menuBarSymbolName: String {
+        switch mascotState {
+        case .idle:
+            return "face.smiling"
+        case .busy:
+            return "bolt.horizontal.circle.fill"
+        case .restarting:
+            return "arrow.triangle.2.circlepath.circle.fill"
+        case .error:
+            return "exclamationmark.triangle.fill"
+        case .fixing:
+            return "wrench.and.screwdriver.fill"
+        case .success:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "xmark.circle.fill"
+        }
+    }
+
     var statusHeadline: String {
         if isHealthy {
             return "OpenClaw 正在正常运行"
@@ -239,6 +418,204 @@ final class AppState: ObservableObject {
             return errorMessage
         }
         return "如果你已经打开了 OpenClaw，但这里仍然没有变绿，可以先检查设置里的启动命令和 Agent 配置。"
+    }
+
+    private func applyStatusUpdate(_ newStatus: KeepStatusModel) {
+        let oldState = status.state
+        status = newStatus
+        handleRepairOutcomeTransition(from: oldState, to: newStatus)
+    }
+
+    private func handleRepairOutcomeTransition(from oldState: KeepStatusModel.State, to newStatus: KeepStatusModel) {
+        let now = Date()
+        if newStatus.state == .exhausted {
+            recentRepairFailureAt = now
+            return
+        }
+        if newStatus.state == .watching {
+            if oldState == .repairing || oldState == .collecting || oldState == .restarting || newStatus.detail.contains("修复完成") {
+                recentRepairSuccessAt = now
+                recentRepairFailureAt = nil
+            }
+        }
+    }
+
+    private func startAgentLoopActivityPolling() {
+        activityPollTask?.cancel()
+        activityPollTask = Task { [weak self] in
+            while let self, !Task.isCancelled {
+                let delay = await self.pollAgentLoopActivityOnce()
+                try? await Task.sleep(nanoseconds: delay)
+            }
+        }
+    }
+
+    private func startMenuBarAnimation() {
+        menuBarAnimationTask?.cancel()
+        menuBarAnimationTask = Task { [weak self] in
+            while let self, !Task.isCancelled {
+                self.menuBarAnimationTick = (self.menuBarAnimationTick + 1) % 10_000
+                try? await Task.sleep(nanoseconds: 90_000_000)
+            }
+        }
+    }
+
+    private func pollAgentLoopActivityOnce() async -> UInt64 {
+        let now = Date()
+        if now.timeIntervalSince(lastSessionPathRefreshAt) >= Self.sessionPathRefreshIntervalSec {
+            sessionIndexPaths = await Task.detached(priority: .utility) {
+                Self.discoverSessionIndexPaths()
+            }.value
+            lastSessionPathRefreshAt = now
+        }
+
+        let indexPaths = sessionIndexPaths
+        let fingerprints = sessionFileFingerprints
+        let hasLoopSignal = await Task.detached(priority: .utility) {
+            Self.scanRecentLoopSignal(
+                sessionIndexPaths: indexPaths,
+                activeWindowMs: Self.sessionActiveWindowMs,
+                tailBytes: Self.sessionTailScanBytes,
+                previousFingerprints: fingerprints
+            )
+        }.value
+        sessionFileFingerprints = hasLoopSignal.fingerprints
+
+        if hasLoopSignal.hasSignal {
+            lastAgentLoopSignalAt = now
+        }
+        let busy = {
+            guard let signalAt = lastAgentLoopSignalAt else { return false }
+            return now.timeIntervalSince(signalAt) <= Self.loopBusyHoldSeconds
+        }()
+        if isAgentLoopBusy != busy {
+            isAgentLoopBusy = busy
+        }
+        return busy ? Self.busyPollIntervalNs : Self.idlePollIntervalNs
+    }
+
+    nonisolated private static func discoverSessionIndexPaths() -> [String] {
+        let fileManager = FileManager.default
+        let home = NSHomeDirectory()
+        let homeItems = (try? fileManager.contentsOfDirectory(atPath: home)) ?? []
+        let roots = homeItems
+            .filter { $0.hasPrefix(".openclaw") }
+            .map { "\(home)/\($0)/agents" }
+        var paths = Set<String>()
+
+        for root in roots {
+            guard let items = try? fileManager.contentsOfDirectory(atPath: root) else { continue }
+            for item in items {
+                let candidate = "\(root)/\(item)/sessions/sessions.json"
+                guard fileManager.fileExists(atPath: candidate) else { continue }
+                paths.insert(candidate)
+            }
+        }
+        return Array(paths).sorted()
+    }
+
+    nonisolated private static func scanRecentLoopSignal(sessionIndexPaths: [String], activeWindowMs: Int64, tailBytes: Int, previousFingerprints: [String: UInt64]) -> LoopSignalScanResult {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1_000)
+        var hasSignal = false
+        var fingerprints = previousFingerprints
+        var activeFiles = Set<String>()
+        for indexPath in sessionIndexPaths {
+            let sessions = loadSessionEntries(from: indexPath)
+            for session in sessions {
+                guard nowMs - session.updatedAtMs <= activeWindowMs else { continue }
+                activeFiles.insert(session.sessionFile)
+                guard let fingerprint = fileFingerprint(path: session.sessionFile) else { continue }
+                if fingerprints[session.sessionFile] == fingerprint {
+                    continue
+                }
+                fingerprints[session.sessionFile] = fingerprint
+                if fileContainsLoopSignal(path: session.sessionFile, tailBytes: tailBytes) {
+                    hasSignal = true
+                }
+            }
+        }
+
+        fingerprints = fingerprints.filter { activeFiles.contains($0.key) }
+        return LoopSignalScanResult(hasSignal: hasSignal, fingerprints: fingerprints)
+    }
+
+    nonisolated private static func loadSessionEntries(from indexPath: String) -> [SessionIndexEntry] {
+        guard
+            let data = try? Data(contentsOf: URL(fileURLWithPath: indexPath)),
+            let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else {
+            return []
+        }
+
+        var entries: [SessionIndexEntry] = []
+        entries.reserveCapacity(root.count)
+        for value in root.values {
+            guard
+                let item = value as? [String: Any],
+                let updatedAt = asInt64(item["updatedAt"]),
+                let sessionFile = item["sessionFile"] as? String,
+                !sessionFile.isEmpty
+            else {
+                continue
+            }
+            entries.append(SessionIndexEntry(updatedAtMs: updatedAt, sessionFile: sessionFile))
+        }
+        return entries
+    }
+
+    nonisolated private static func asInt64(_ value: Any?) -> Int64? {
+        switch value {
+        case let number as NSNumber:
+            return number.int64Value
+        case let string as String:
+            return Int64(string)
+        default:
+            return nil
+        }
+    }
+
+    nonisolated private static func fileContainsLoopSignal(path: String, tailBytes: Int) -> Bool {
+        guard let tail = readFileTail(path: path, maxBytes: tailBytes) else { return false }
+        return tail.contains("\"type\":\"thinking\"")
+            || tail.contains("\"type\":\"toolCall\"")
+            || tail.contains("\"type\":\"toolResult\"")
+            || tail.contains("\"role\":\"toolResult\"")
+    }
+
+    nonisolated private static func readFileTail(path: String, maxBytes: Int) -> String? {
+        guard maxBytes > 0 else { return nil }
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        do {
+            let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: path))
+            defer {
+                try? handle.close()
+            }
+            let endOffset = try handle.seekToEnd()
+            let startOffset = endOffset > UInt64(maxBytes) ? endOffset - UInt64(maxBytes) : 0
+            try handle.seek(toOffset: startOffset)
+            let data = handle.readDataToEndOfFile()
+            return String(data: data, encoding: .utf8)
+        } catch {
+            return nil
+        }
+    }
+
+    nonisolated private static func fileFingerprint(path: String) -> UInt64? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path) else { return nil }
+        let size = (attrs[.size] as? NSNumber)?.uint64Value ?? 0
+        let modifiedAt = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        let millis = UInt64(max(0, modifiedAt) * 1_000)
+        return (millis << 20) ^ (size & 0x000F_FFFF)
+    }
+
+    private struct SessionIndexEntry {
+        let updatedAtMs: Int64
+        let sessionFile: String
+    }
+
+    private struct LoopSignalScanResult {
+        let hasSignal: Bool
+        let fingerprints: [String: UInt64]
     }
 
     func scheduleAutosave(immediate: Bool = false) {
