@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"claw-keep/keepd/internal/config"
 	"claw-keep/keepd/internal/logging"
@@ -20,11 +21,17 @@ type ConfigStore interface {
 	Replace(*config.Config) error
 }
 
+type ConfigApplier interface {
+	Apply(*config.Config) error
+}
+
 type request struct {
-	Action     string         `json:"action"`
-	Channel    string         `json:"channel,omitempty"`
-	MaxBacklog int            `json:"max_backlog,omitempty"`
-	Config     *config.Config `json:"config,omitempty"`
+	Action      string         `json:"action"`
+	Channel     string         `json:"channel,omitempty"`
+	MaxBacklog  int            `json:"max_backlog,omitempty"`
+	DurationSec int            `json:"duration_sec,omitempty"`
+	Reason      string         `json:"reason,omitempty"`
+	Config      *config.Config `json:"config,omitempty"`
 }
 
 type response struct {
@@ -34,23 +41,25 @@ type response struct {
 }
 
 type Server struct {
-	socketPath   string
-	configStore  ConfigStore
-	logger       *logging.Logger
-	orchestrator *orchestrator.Orchestrator
-	notifier     *notifier.Manager
+	socketPath    string
+	configStore   ConfigStore
+	logger        *logging.Logger
+	orchestrator  *orchestrator.Orchestrator
+	notifier      *notifier.Manager
+	configApplier ConfigApplier
 
 	listener net.Listener
 	once     sync.Once
 }
 
-func New(socketPath string, configStore ConfigStore, logger *logging.Logger, orchestrator *orchestrator.Orchestrator, notifier *notifier.Manager) *Server {
+func New(socketPath string, configStore ConfigStore, logger *logging.Logger, orchestrator *orchestrator.Orchestrator, notifier *notifier.Manager, configApplier ConfigApplier) *Server {
 	return &Server{
-		socketPath:   socketPath,
-		configStore:  configStore,
-		logger:       logger,
-		orchestrator: orchestrator,
-		notifier:     notifier,
+		socketPath:    socketPath,
+		configStore:   configStore,
+		logger:        logger,
+		orchestrator:  orchestrator,
+		notifier:      notifier,
+		configApplier: configApplier,
 	}
 }
 
@@ -124,27 +133,40 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) error {
 		if err := s.configStore.Replace(cfg); err != nil {
 			return s.writeResponse(conn, response{OK: false, Error: err.Error()})
 		}
+		if s.configApplier != nil {
+			if err := s.configApplier.Apply(cfg); err != nil {
+				return s.writeResponse(conn, response{OK: false, Error: err.Error()})
+			}
+		}
 		return s.writeResponse(conn, response{OK: true, Result: s.configStore.Config()})
 	case "trigger_repair":
 		if err := s.orchestrator.TriggerRepair(ctx); err != nil {
 			return s.writeResponse(conn, response{OK: false, Error: err.Error()})
 		}
 		return s.writeResponse(conn, response{OK: true, Result: true})
-	case "restart":
-		if err := s.orchestrator.Restart(ctx); err != nil {
-			return s.writeResponse(conn, response{OK: false, Error: err.Error()})
-		}
-		return s.writeResponse(conn, response{OK: true, Result: true})
 	case "reset_monitoring":
 		s.orchestrator.Reset()
+		return s.writeResponse(conn, response{OK: true, Result: true})
+	case "enter_maintenance":
+		if req.DurationSec <= 0 {
+			return s.writeResponse(conn, response{OK: false, Error: "duration_sec must be greater than 0"})
+		}
+		reason := req.Reason
+		if reason == "" {
+			reason = "已进入维护窗口"
+		}
+		s.orchestrator.EnterMaintenance(time.Duration(req.DurationSec)*time.Second, reason)
+		return s.writeResponse(conn, response{OK: true, Result: true})
+	case "exit_maintenance":
+		s.orchestrator.ExitMaintenance()
 		return s.writeResponse(conn, response{OK: true, Result: true})
 	case "test_notify":
 		if req.Channel == "" {
 			return s.writeResponse(conn, response{OK: false, Error: "channel is required"})
 		}
 		message := notifier.Message{
-			Title: "ClawKeep test notification",
-			Body:  "This is a test notification for channel " + req.Channel,
+			Title: "ClawKeep 测试通知",
+			Body:  "这是一条来自 ClawKeep 的测试通知，渠道：" + req.Channel,
 		}
 		if err := s.notifier.TestChannel(ctx, req.Channel, message); err != nil {
 			return s.writeResponse(conn, response{OK: false, Error: err.Error()})

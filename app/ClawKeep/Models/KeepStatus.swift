@@ -4,6 +4,7 @@ struct KeepStatusModel: Codable, Equatable {
     enum State: String, Codable {
         case unmonitored
         case watching
+        case maintenance
         case crashDetected = "crash_detected"
         case collecting
         case repairing
@@ -55,6 +56,8 @@ struct KeepStatusModel: Codable, Equatable {
         switch state {
         case .watching:
             return "checkmark.shield.fill"
+        case .maintenance:
+            return "wrench.and.screwdriver.fill"
         case .crashDetected, .exhausted:
             return "exclamationmark.shield.fill"
         case .collecting, .repairing, .restarting:
@@ -68,6 +71,8 @@ struct KeepStatusModel: Codable, Equatable {
         switch state {
         case .watching:
             return "运行中"
+        case .maintenance:
+            return "维护中"
         case .crashDetected:
             return "崩溃"
         case .collecting:

@@ -229,8 +229,8 @@ type Agent interface {
 
 | 通道 | 实现方式 | 配置项 |
 |------|---------|--------|
-| 飞书 | Webhook POST（支持签名） | webhook_url, secret |
-| Bark | HTTP GET/POST 到 Bark server | server_url, device_key |
+| 飞书 | Webhook POST 到飞书群自定义机器人 | webhook_url |
+| Bark | HTTP GET/POST 到 Bark 推送 URL | push_url |
 | SMTP | 标准 SMTP 发送邮件 | host, port, user, pass, from, to, tls |
 
 ### 6.2 触发事件（可配置）
@@ -239,7 +239,6 @@ type Agent interface {
 - `repair_start` — 开始修复
 - `repair_success` — 修复成功
 - `repair_fail` — 修复失败
-- `restart` — 进程重启
 - `agent_timeout` — agent 执行超时
 
 用户在配置中选择哪些事件触发通知。
@@ -308,9 +307,6 @@ MY_API_KEY = "xxx"
 
 [repair]
 auto_repair = true
-auto_restart = true
-restart_command = "/usr/local/bin/openclaw"  # 建议使用绝对路径
-restart_args = ["gateway"]
 max_repair_attempts = 3
 prompt_template = """
 openclaw-gateway 进程崩溃了。
@@ -336,12 +332,10 @@ notify_on = ["crash", "repair_success", "repair_fail"]
 [notify.feishu]
 enabled = true
 webhook_url = "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
-secret = ""
 
 [notify.bark]
 enabled = true
-server_url = "https://api.day.app"
-device_key = "your-device-key"
+push_url = "https://api.day.app/your-key"
 
 [notify.smtp]
 enabled = false
@@ -497,15 +491,14 @@ SwiftUI Settings 窗口，TabView 分区：
 - Agent 列表（可增删改）
   - 每个 agent：名称、CLI 路径（带文件选择器）、参数、工作目录、超时、环境变量
 - 自动修复开关
-- 自动重启开关
 - Prompt 模板编辑器（TextEditor，支持模板变量提示）
 
 ### Tab 3: 通知
 
-- 飞书：开关 + webhook URL + secret
-- Bark：开关 + server URL + device key
+- 飞书：开关 + 飞书群自定义机器人 webhook URL
+- Bark：开关 + Bark 完整推送 URL
 - SMTP：开关 + 完整邮件配置
-- 触发事件多选（crash / repair_start / repair_success / repair_fail / restart）
+- 触发事件多选（crash / repair_start / repair_success / repair_fail / agent_timeout）
 - 测试通知按钮（每个通道一个）
 
 ### Tab 4: 日志

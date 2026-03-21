@@ -7,7 +7,6 @@ struct NotifySection: View {
         ("repair_start", "开始自动修复时提醒"),
         ("repair_success", "修复成功时提醒"),
         ("repair_fail", "修复失败时提醒"),
-        ("restart", "重新拉起 OpenClaw 时提醒"),
         ("agent_timeout", "修复工具超时时提醒")
     ]
 
@@ -21,54 +20,50 @@ struct NotifySection: View {
                 }
             }
 
-            SettingsCard("飞书提醒", description: "把飞书群机器人的 Webhook 地址贴进来就可以了。异常、修复开始、修复结果这些提醒会默认全部发送。") {
+            SettingsCard("飞书提醒", description: "把飞书群里的自定义机器人 Webhook 地址贴进来就可以了。异常、修复开始、修复结果这些提醒会默认全部发送。") {
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle("启用飞书提醒", isOn: Binding(
                         get: { appState.config.notify.feishu.enabled },
                         set: { appState.config.notify.feishu.enabled = $0 }
                     ))
-                    TextField("飞书 Webhook", text: Binding(
+                    TextField("飞书群自定义机器人 Webhook", text: Binding(
                         get: { appState.config.notify.feishu.webhookURL },
-                        set: { appState.config.notify.feishu.webhookURL = $0 }
+                        set: {
+                            appState.config.notify.feishu.webhookURL = $0
+                            appState.scheduleAutosave()
+                        }
                     ))
-                    TextField("飞书 Secret（如果机器人启用了签名）", text: Binding(
-                        get: { appState.config.notify.feishu.secret },
-                        set: { appState.config.notify.feishu.secret = $0 }
-                    ))
+                        .textFieldStyle(.roundedBorder)
+                    Text(verbatim: "示例：https://open.feishu.cn/open-apis/bot/v2/hook/<你的WebhookToken>")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Button("测试飞书") { appState.testNotify(channel: "feishu") }
                 }
             }
 
-            SettingsCard("Bark 提醒", description: "默认服务地址是官方地址。你只需要填自己的 Device Key；如果你用自建 Bark，也可以改服务地址。") {
+            SettingsCard("Bark 提醒", description: "把 Bark App 里复制出来的完整推送 URL 贴进来，例如 https://api.day.app/你的Key。ClawKeep 会自动在后面拼上标题和正文。") {
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle("启用 Bark 提醒", isOn: Binding(
                         get: { appState.config.notify.bark.enabled },
                         set: { appState.config.notify.bark.enabled = $0 }
                     ))
-                    TextField("Bark 服务地址", text: Binding(
-                        get: { appState.config.notify.bark.serverURL },
-                        set: { appState.config.notify.bark.serverURL = $0 }
+                    TextField("Bark 推送 URL", text: Binding(
+                        get: { appState.config.notify.bark.pushURL },
+                        set: {
+                            appState.config.notify.bark.pushURL = $0
+                            appState.scheduleAutosave()
+                        }
                     ))
-                    TextField("Device Key", text: Binding(
-                        get: { appState.config.notify.bark.deviceKey },
-                        set: { appState.config.notify.bark.deviceKey = $0 }
-                    ))
-                    Text("示例：\(barkExampleURL)")
+                        .textFieldStyle(.roundedBorder)
+                    Text(verbatim: "示例：https://api.day.app/<你的Key>")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
                     Button("测试 Bark") { appState.testNotify(channel: "bark") }
                 }
             }
 
             SettingsFooter(action: appState.saveConfig)
         }
-    }
-
-    private var barkExampleURL: String {
-        let server = appState.config.notify.bark.serverURL.isEmpty ? "https://api.day.app" : appState.config.notify.bark.serverURL
-        let key = appState.config.notify.bark.deviceKey.isEmpty ? "<你的DeviceKey>" : appState.config.notify.bark.deviceKey
-        return "\(server)/\(key)/ClawKeep/OpenClaw%20%E7%8A%B6%E6%80%81%E6%AD%A3%E5%B8%B8"
     }
 
     private func notifyBinding(for event: String) -> Binding<Bool> {

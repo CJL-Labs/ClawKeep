@@ -15,14 +15,19 @@ struct MonitorSection: View {
                         get: { appState.config.monitor.tcpProbeTimeoutMs },
                         set: { appState.config.monitor.tcpProbeTimeoutMs = min(max($0, 500), 10000) }
                     ))
-                    numericField(title: "连续失败后最多重试", placeholder: "5", binding: intStringBinding(
-                        get: { appState.config.monitor.maxRestartAttempts },
+                    numericField(title: "异常检测宽限期（秒）", placeholder: "20", binding: intStringBinding(
+                        get: { appState.config.monitor.exitGracePeriodSec },
+                        set: { appState.config.monitor.exitGracePeriodSec = min(max($0, 1), 300) }
+                    ))
+                    numericField(title: "最多修复尝试次数", placeholder: "3", binding: intStringBinding(
+                        get: { appState.config.repair.maxRepairAttempts },
                         set: {
-                            let value = min(max($0, 1), 20)
-                            appState.config.monitor.maxRestartAttempts = value
-                            appState.config.repair.maxRepairAttempts = value
+                            appState.config.repair.maxRepairAttempts = min(max($0, 1), 20)
                         }
                     ))
+                    Text("默认 20 秒。手动升级、手动重启，以及应用内的重启操作，都算在这段宽限期里；如果在宽限期内恢复健康，就不会按异常处理。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -31,6 +36,17 @@ struct MonitorSection: View {
                     monitorFact("程序名", appState.config.monitor.processName)
                     monitorFact("PID 文件", appState.config.monitor.pidFile.isEmpty ? "未设置" : appState.config.monitor.pidFile)
                     monitorFact("探测地址", "\(appState.config.monitor.host):\(appState.config.monitor.port)")
+                }
+            }
+
+            SettingsCard("维护操作", description: "应用内重启会自动进入维护窗口，不会直接触发异常修复。手动升级前也可以先暂停异常检测 5 分钟。") {
+                HStack(spacing: 12) {
+                    Button("重启 Gateway") {
+                        appState.restartGateway()
+                    }
+                    Button("暂停异常检测 5 分钟") {
+                        appState.pauseDetectionForMaintenance()
+                    }
                 }
             }
 

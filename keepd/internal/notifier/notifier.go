@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/smtp"
 	"net/url"
@@ -27,7 +28,6 @@ const (
 	EventRepairStart   Event = "repair_start"
 	EventRepairSuccess Event = "repair_success"
 	EventRepairFail    Event = "repair_fail"
-	EventRestart       Event = "restart"
 	EventAgentTimeout  Event = "agent_timeout"
 )
 
@@ -82,7 +82,7 @@ func (m *Manager) ApplyConfig(cfg config.NotifyConfig) {
 	if cfg.Feishu.Enabled && cfg.Feishu.WebhookURL != "" {
 		senders["feishu"] = &feishuSender{cfg: cfg.Feishu}
 	}
-	if cfg.Bark.Enabled && cfg.Bark.DeviceKey != "" {
+	if cfg.Bark.Enabled && cfg.Bark.PushURL != "" {
 		senders["bark"] = &barkSender{cfg: cfg.Bark}
 	}
 	if cfg.SMTP.Enabled && cfg.SMTP.Host != "" && len(cfg.SMTP.To) > 0 {
@@ -112,23 +112,9 @@ type feishuSender struct {
 
 func (s *feishuSender) Send(ctx context.Context, event Event, message Message) error {
 	payload := map[string]any{
-		"msg_type": "interactive",
-		"card": map[string]any{
-			"header": map[string]any{
-				"title": map[string]string{
-					"tag":     "plain_text",
-					"content": message.Title,
-				},
-			},
-			"elements": []map[string]any{
-				{
-					"tag": "div",
-					"text": map[string]string{
-						"tag":     "lark_md",
-						"content": message.Body,
-					},
-				},
-			},
+		"msg_type": "text",
+		"content": map[string]string{
+			"text": message.Title + "\n" + message.Body,
 		},
 	}
 	if s.cfg.Secret != "" {
@@ -151,8 +137,19 @@ func (s *feishuSender) Send(ctx context.Context, event Event, message Message) e
 		return err
 	}
 	defer response.Body.Close()
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return err
+	}
 	if response.StatusCode >= 300 {
 		return fmt.Errorf("feishu webhook returned status %d", response.StatusCode)
+	}
+	var result struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+	}
+	if len(responseBody) > 0 && json.Unmarshal(responseBody, &result) == nil && result.Code != 0 {
+		return fmt.Errorf("feishu webhook rejected request: %s (code %d)", result.Msg, result.Code)
 	}
 	return nil
 }
@@ -164,7 +161,7 @@ type barkSender struct {
 func (s *barkSender) Send(ctx context.Context, event Event, message Message) error {
 	escapedTitle := url.PathEscape(message.Title)
 	escapedBody := url.PathEscape(message.Body)
-	endpoint := strings.TrimRight(s.cfg.ServerURL, "/") + "/" + s.cfg.DeviceKey + "/" + escapedTitle + "/" + escapedBody
+	endpoint := strings.TrimRight(s.cfg.PushURL, "/") + "/" + escapedTitle + "/" + escapedBody
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err
@@ -174,8 +171,19 @@ func (s *barkSender) Send(ctx context.Context, event Event, message Message) err
 		return err
 	}
 	defer response.Body.Close()
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return err
+	}
 	if response.StatusCode >= 300 {
 		return fmt.Errorf("bark returned status %d", response.StatusCode)
+	}
+	var result struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	if len(responseBody) > 0 && json.Unmarshal(responseBody, &result) == nil && result.Code != 200 {
+		return fmt.Errorf("bark rejected request: %s (code %d)", result.Message, result.Code)
 	}
 	return nil
 }
@@ -248,8 +256,8 @@ func (s *smtpSender) Send(_ context.Context, event Event, message Message) error
 
 func signFeishu(timestamp string, secret string) string {
 	payload := timestamp + "\n" + secret
-	sum := hmac.New(sha256.New, []byte(secret))
-	_, _ = sum.Write([]byte(payload))
+	sum := hmac.New(sha256.New, []byte(payload))
+	_, _ = sum.Write([]byte{})
 	signature := sum.Sum(nil)
 	return base64.StdEncoding.EncodeToString(signature)
 }

@@ -7,6 +7,7 @@ enable_kqueue = true
 enable_tcp_probe = true
 tcp_probe_timeout_ms = 3000
 health_command = ""
+exit_grace_period_sec = 20
 restart_cooldown_sec = 30
 max_restart_attempts = 5
 
@@ -29,15 +30,12 @@ timeout_sec = 300
 [[agent.agents]]
 name = "codex"
 cli_path = "/usr/local/bin/codex"
-cli_args = ["exec", "{{prompt}}"]
+cli_args = ["exec", "--skip-git-repo-check", "{{prompt}}"]
 working_dir = "~/.openclaw/"
 timeout_sec = 300
 
 [repair]
 auto_repair = true
-auto_restart = true
-restart_command = "/usr/local/bin/openclaw"
-restart_args = ["gateway"]
 max_repair_attempts = 3
 prompt_template = """
 openclaw-gateway 进程崩溃了。
@@ -54,7 +52,7 @@ openclaw-gateway 进程崩溃了。
 """
 
 [notify]
-notify_on = ["crash", "repair_start", "repair_success", "repair_fail", "restart", "agent_timeout"]
+notify_on = ["crash", "repair_start", "repair_success", "repair_fail", "agent_timeout"]
 
 [notify.feishu]
 enabled = false
@@ -62,8 +60,7 @@ webhook_url = ""
 
 [notify.bark]
 enabled = false
-server_url = "https://api.day.app"
-device_key = ""
+push_url = ""
 
 [daemon]
 log_level = "info"

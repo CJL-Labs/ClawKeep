@@ -47,7 +47,7 @@ final class DaemonManager {
                     name: "codex",
                     displayName: "Codex",
                     command: "codex",
-                    cliArgs: ["exec", "{{prompt}}"],
+                    cliArgs: ["exec", "--skip-git-repo-check", "{{prompt}}"],
                     fallbacks: [
                         "/opt/homebrew/bin/codex",
                         "/usr/local/bin/codex"
@@ -60,6 +60,10 @@ final class DaemonManager {
     func ensureDefaultConfig(at path: String, discovery: RuntimeDiscovery) throws {
         let fileManager = FileManager.default
         if fileManager.fileExists(atPath: path) {
+            if try shouldRewriteConfig(at: path) {
+                try defaultConfigContents(discovery: discovery).write(to: URL(fileURLWithPath: path), atomically: true, encoding: .utf8)
+                return
+            }
             try repairConfigIfNeeded(at: path, discovery: discovery)
             return
         }
@@ -91,6 +95,27 @@ final class DaemonManager {
             }
             process = nil
             throw NSError(domain: "ClawKeep", code: 2, userInfo: [NSLocalizedDescriptionKey: "keepd 启动失败，后台连接没有建立成功。"])
+        }
+    }
+
+    func restartGateway() throws {
+        guard let openClawPath = discoverRuntime().openClawPath else {
+            throw NSError(domain: "ClawKeep", code: 3, userInfo: [NSLocalizedDescriptionKey: "没有找到 openclaw 命令，无法执行重启。"])
+        }
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: openClawPath)
+        task.arguments = ["gateway", "restart"]
+        let output = Pipe()
+        task.standardOutput = output
+        task.standardError = output
+        try task.run()
+        task.waitUntilExit()
+
+        if task.terminationStatus != 0 {
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            let message = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "unknown error"
+            throw NSError(domain: "ClawKeep", code: Int(task.terminationStatus), userInfo: [NSLocalizedDescriptionKey: "重启 OpenClaw Gateway 失败：\(message)"])
         }
     }
 
@@ -188,14 +213,10 @@ final class DaemonManager {
                 contents = contents.replacingOccurrences(of: "/usr/local/bin/codex", with: agent.cliPath)
                 contents = contents.replacingOccurrences(of: "/opt/homebrew/bin/codex", with: agent.cliPath)
                 contents = contents.replacingOccurrences(of: #"cli_args = ["exec"]"#, with: #"cli_args = ["exec", "{{prompt}}"]"#)
+                contents = contents.replacingOccurrences(of: #"cli_args = ["exec", "{{prompt}}"]"#, with: #"cli_args = ["exec", "--skip-git-repo-check", "{{prompt}}"]"#)
             default:
                 break
             }
-        }
-
-        if let openClawPath = discovery.openClawPath {
-            contents = contents.replacingOccurrences(of: #"restart_command = "/usr/local/bin/openclaw""#, with: #"restart_command = "\#(openClawPath)""#)
-            contents = contents.replacingOccurrences(of: #"restart_command = "/opt/homebrew/bin/openclaw""#, with: #"restart_command = "\#(openClawPath)""#)
         }
 
         if contents != original {
@@ -203,8 +224,24 @@ final class DaemonManager {
         }
     }
 
+    private func shouldRewriteConfig(at path: String) throws -> Bool {
+        let contents = try String(contentsOfFile: path, encoding: .utf8)
+        let trimmed = contents.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return true
+        }
+
+        let requiredMarkers = [
+            "[monitor]",
+            "[agent]",
+            "[repair]",
+            "[notify]",
+            "[daemon]"
+        ]
+        return requiredMarkers.contains { !contents.contains($0) }
+    }
+
     private func defaultConfigContents(discovery: RuntimeDiscovery) -> String {
-        let openClawPath = discovery.openClawPath ?? "/usr/local/bin/openclaw"
         let defaultAgent = discovery.agents.first?.name ?? "claude"
         let openClawHome = ("~/.openclaw/" as NSString).expandingTildeInPath
 
@@ -236,6 +273,7 @@ final class DaemonManager {
         enable_tcp_probe = true
         tcp_probe_timeout_ms = 3000
         health_command = ""
+        exit_grace_period_sec = 20
         restart_cooldown_sec = 30
         max_restart_attempts = 5
 
@@ -252,9 +290,6 @@ final class DaemonManager {
 
         [repair]
         auto_repair = true
-        auto_restart = true
-        restart_command = "\(openClawPath)"
-        restart_args = ["gateway"]
         max_repair_attempts = 3
         prompt_template = \"\"\"
         OpenClaw Gateway 崩溃了。你需要先判断原因，然后直接完成修复并恢复服务。
@@ -274,7 +309,7 @@ final class DaemonManager {
         \"\"\"
 
         [notify]
-        notify_on = ["crash", "repair_start", "repair_success", "repair_fail", "restart", "agent_timeout"]
+        notify_on = ["crash", "repair_start", "repair_success", "repair_fail", "agent_timeout"]
 
         [notify.feishu]
         enabled = false
@@ -282,8 +317,7 @@ final class DaemonManager {
 
         [notify.bark]
         enabled = false
-        server_url = "https://api.day.app"
-        device_key = ""
+        push_url = ""
 
         [daemon]
         log_level = "info"

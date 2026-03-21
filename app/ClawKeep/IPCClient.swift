@@ -40,6 +40,7 @@ struct MonitorConfig: Codable, Equatable {
     var enableTcpProbe = true
     var tcpProbeTimeoutMs = 3000
     var healthCommand = ""
+    var exitGracePeriodSec = 20
     var restartCooldownSec = 30
     var maxRestartAttempts = 5
 }
@@ -85,9 +86,6 @@ struct AgentEntry: Codable, Equatable {
 
 struct RepairConfig: Codable, Equatable {
     var autoRepair = true
-    var autoRestart = true
-    var restartCommand = ""
-    var restartArgs: [String] = []
     var maxRepairAttempts = 3
     var promptTemplate = ""
 }
@@ -124,6 +122,7 @@ struct FeishuConfig: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case enabled
         case webhookURL = "webhook_url"
+        case webhookUrl
         case secret
     }
 
@@ -132,20 +131,32 @@ struct FeishuConfig: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
-        webhookURL = try container.decodeIfPresent(String.self, forKey: .webhookURL) ?? ""
+        webhookURL = try container.decodeIfPresent(String.self, forKey: .webhookURL)
+            ?? container.decodeIfPresent(String.self, forKey: .webhookUrl)
+            ?? ""
         secret = try container.decodeIfPresent(String.self, forKey: .secret) ?? ""
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(webhookURL, forKey: .webhookURL)
+        try container.encode(secret, forKey: .secret)
     }
 }
 
 struct BarkConfig: Codable, Equatable {
     var enabled = false
-    var serverURL = "https://api.day.app"
-    var deviceKey = ""
+    var pushURL = ""
 
     enum CodingKeys: String, CodingKey {
         case enabled
-        case serverURL = "server_url"
-        case deviceKey = "device_key"
+        case pushURL = "push_url"
+        case pushUrl
+        case legacyServerURL = "server_url"
+        case legacyServerUrl = "serverUrl"
+        case legacyDeviceKey = "device_key"
+        case legacyDeviceKeyCamel = "deviceKey"
     }
 
     init() {}
@@ -153,8 +164,26 @@ struct BarkConfig: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
-        serverURL = try container.decodeIfPresent(String.self, forKey: .serverURL) ?? "https://api.day.app"
-        deviceKey = try container.decodeIfPresent(String.self, forKey: .deviceKey) ?? ""
+        pushURL = try container.decodeIfPresent(String.self, forKey: .pushURL)
+            ?? container.decodeIfPresent(String.self, forKey: .pushUrl)
+            ?? ""
+        if pushURL.isEmpty {
+            let serverURL = try container.decodeIfPresent(String.self, forKey: .legacyServerURL)
+                ?? container.decodeIfPresent(String.self, forKey: .legacyServerUrl)
+                ?? ""
+            let deviceKey = try container.decodeIfPresent(String.self, forKey: .legacyDeviceKey)
+                ?? container.decodeIfPresent(String.self, forKey: .legacyDeviceKeyCamel)
+                ?? ""
+            if !serverURL.isEmpty && !deviceKey.isEmpty {
+                pushURL = "\(serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/\(deviceKey.trimmingCharacters(in: CharacterSet(charactersIn: "/")))"
+            }
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(pushURL, forKey: .pushURL)
     }
 }
 
@@ -177,6 +206,7 @@ struct SMTPConfig: Codable, Equatable {
         case from
         case to
         case useTLS = "use_tls"
+        case useTls
     }
 
     init() {}
@@ -190,7 +220,21 @@ struct SMTPConfig: Codable, Equatable {
         password = try container.decodeIfPresent(String.self, forKey: .password) ?? ""
         from = try container.decodeIfPresent(String.self, forKey: .from) ?? ""
         to = try container.decodeIfPresent([String].self, forKey: .to) ?? []
-        useTLS = try container.decodeIfPresent(Bool.self, forKey: .useTLS) ?? true
+        useTLS = try container.decodeIfPresent(Bool.self, forKey: .useTLS)
+            ?? container.decodeIfPresent(Bool.self, forKey: .useTls)
+            ?? true
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(host, forKey: .host)
+        try container.encode(port, forKey: .port)
+        try container.encode(username, forKey: .username)
+        try container.encode(password, forKey: .password)
+        try container.encode(from, forKey: .from)
+        try container.encode(to, forKey: .to)
+        try container.encode(useTLS, forKey: .useTLS)
     }
 }
 
@@ -204,6 +248,8 @@ private struct IPCRequest: Encodable {
     var action: String
     var channel: String?
     var maxBacklog: Int?
+    var durationSec: Int?
+    var reason: String?
     var config: AppConfig?
 }
 
@@ -346,10 +392,6 @@ final class IPCClient: Sendable {
         _ = try await request(action: "trigger_repair", as: Bool.self)
     }
 
-    func restart() async throws {
-        _ = try await request(action: "restart", as: Bool.self)
-    }
-
     func resetMonitoring() async throws {
         _ = try await request(action: "reset_monitoring", as: Bool.self)
     }
@@ -358,19 +400,28 @@ final class IPCClient: Sendable {
         _ = try await request(action: "test_notify", channel: channel, as: Bool.self)
     }
 
+    func enterMaintenance(durationSec: Int, reason: String) async throws {
+        _ = try await request(action: "enter_maintenance", durationSec: durationSec, reason: reason, as: Bool.self)
+    }
+
+    func exitMaintenance() async throws {
+        _ = try await request(action: "exit_maintenance", as: Bool.self)
+    }
+
     func subscribeStatus(onEvent: @escaping @Sendable (KeepStatusModel) async -> Void) async throws {
         try await stream(action: "subscribe_status", as: KeepStatusModel.self, onEvent: onEvent)
     }
 
-    private func request<Result: Decodable & Sendable>(action: String, channel: String? = nil, maxBacklog: Int? = nil, config: AppConfig? = nil, as: Result.Type) async throws -> Result {
+    private func request<Result: Decodable & Sendable>(action: String, channel: String? = nil, maxBacklog: Int? = nil, durationSec: Int? = nil, reason: String? = nil, config: AppConfig? = nil, as: Result.Type) async throws -> Result {
         let socketPath = await socketPathStore.get()
         guard !socketPath.isEmpty else {
             throw IPCError.missingSocketPath
         }
 
-        let payload = IPCRequest(action: action, channel: channel, maxBacklog: maxBacklog, config: config)
+        let payload = IPCRequest(action: action, channel: channel, maxBacklog: maxBacklog, durationSec: durationSec, reason: reason, config: config)
         return try await Task.detached(priority: .userInitiated) { [socketPath] in
             let encoder = JSONEncoder()
+            encoder.keyEncodingStrategy = .convertToSnakeCase
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             decoder.dateDecodingStrategy = .iso8601
@@ -405,6 +456,7 @@ final class IPCClient: Sendable {
         let connection = try UnixSocketConnection(path: socketPath)
         do {
             let encoder = JSONEncoder()
+            encoder.keyEncodingStrategy = .convertToSnakeCase
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             decoder.dateDecodingStrategy = .iso8601

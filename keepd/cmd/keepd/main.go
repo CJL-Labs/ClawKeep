@@ -18,6 +18,7 @@ import (
 	"claw-keep/keepd/internal/monitor"
 	"claw-keep/keepd/internal/notifier"
 	"claw-keep/keepd/internal/orchestrator"
+	"claw-keep/keepd/internal/runtime"
 )
 
 func main() {
@@ -54,7 +55,8 @@ func main() {
 	configStore := config.NewStore(*configPath, cfg)
 	orc := orchestrator.New(cfg, logger, dispatcher, notifyManager)
 	mon := monitor.New(cfg.Monitor, logger)
-	ipcServer := ipcserver.New(*socketPath, configStore, logger, orc, notifyManager)
+	configApplier := runtime.NewApplier(dispatcher, mon, notifyManager, orc, logger)
+	ipcServer := ipcserver.New(*socketPath, configStore, logger, orc, notifyManager, configApplier)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -121,9 +123,16 @@ func main() {
 			case <-ctx.Done():
 				return
 			case event := <-mon.Events():
+				logger.Debug("monitor event", "type", string(event.Type), "pid", event.PID, "exit_code", event.ExitCode, "detail", event.Detail)
+				if orc.ShouldIgnoreEvent(event.Time) {
+					continue
+				}
 				switch event.Type {
 				case monitor.EventProcessUp:
 					orc.UpdatePID(event.PID)
+					if !cfg.Monitor.EnableTCPProbe {
+						orc.ConfirmHealthy(event.PID)
+					}
 				case monitor.EventProcessExit:
 					report := crash.Report{
 						ProcessName: cfg.Monitor.ProcessName,
@@ -132,9 +141,11 @@ func main() {
 						CrashTime:   event.Time,
 						WatchPaths:  append([]string(nil), cfg.Log.WatchPaths...),
 					}
-					if err := orc.HandleCrash(ctx, report); err != nil {
+					if err := orc.HandleProcessExit(ctx, report); err != nil {
 						logger.Warn("handle crash failed", "error", err.Error())
 					}
+				case monitor.EventPortUp:
+					orc.ConfirmHealthy(event.PID)
 				case monitor.EventPortDown:
 					orc.PortDown(event.Detail)
 				}

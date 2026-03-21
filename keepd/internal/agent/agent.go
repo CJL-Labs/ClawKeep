@@ -168,7 +168,7 @@ func (a *cliAgent) Name() string {
 }
 
 func (e *TimeoutError) Error() string {
-	return fmt.Sprintf("agent %q timed out after %s", e.Agent, e.Timeout)
+	return fmt.Sprintf("修复工具 %q 在 %s 内未完成", e.Agent, e.Timeout)
 }
 
 func (a *cliAgent) Available() bool {

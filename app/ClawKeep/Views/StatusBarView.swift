@@ -6,7 +6,13 @@ struct StatusBarView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             Divider()
-            Button("手动重启", action: appState.restart)
+            Button("重启 Gateway", action: appState.restartGateway)
+                .disabled(!appState.isConnected)
+            Button("暂停异常检测 5 分钟") {
+                appState.pauseDetectionForMaintenance()
+            }
+            .disabled(!appState.isConnected)
+            Divider()
             Button("触发修复", action: appState.triggerRepair)
             Button("重置监控", action: appState.resetMonitoring)
                 .disabled(appState.status.state != .exhausted)
@@ -29,7 +35,7 @@ struct StatusBarView: View {
                 Circle()
                     .fill(appState.isHealthy ? Color.green : (appState.isConnected ? Color.orange : Color.gray))
                     .frame(width: 10, height: 10)
-                Text(appState.isHealthy ? "OpenClaw 正在运行" : appState.status.statusText)
+                Text(appState.isHealthy ? "OpenClaw 正在运行" : appState.statusHeadline)
                     .font(.headline)
             }
             Text(appState.status.processName)
@@ -41,11 +47,9 @@ struct StatusBarView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if !appState.status.detail.isEmpty {
-                Text(appState.status.detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text(appState.statusDetail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Text("崩溃次数: \(appState.status.crashCount)")
                 .font(.caption)
         }

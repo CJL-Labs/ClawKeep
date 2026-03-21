@@ -38,6 +38,9 @@ struct SettingsView: View {
                 endPoint: .bottomTrailing
             )
         )
+        .onChange(of: appState.config) { _, _ in
+            appState.scheduleAutosave()
+        }
     }
 
     private var header: some View {
@@ -216,8 +219,11 @@ struct SettingsFooter: View {
 
     var body: some View {
         HStack {
+            Text("更改会自动保存")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Spacer()
-            Button("保存配置", action: action)
+            Button("立即保存", action: action)
                 .keyboardShortcut("s", modifiers: [.command])
         }
     }

@@ -30,6 +30,7 @@ type MonitorConfig struct {
 	EnableTCPProbe     bool   `toml:"enable_tcp_probe" json:"enable_tcp_probe"`
 	TCPProbeTimeoutMS  int    `toml:"tcp_probe_timeout_ms" json:"tcp_probe_timeout_ms"`
 	HealthCommand      string `toml:"health_command" json:"health_command"`
+	ExitGracePeriodSec int    `toml:"exit_grace_period_sec" json:"exit_grace_period_sec"`
 	RestartCooldownSec int    `toml:"restart_cooldown_sec" json:"restart_cooldown_sec"`
 	MaxRestartAttempts int    `toml:"max_restart_attempts" json:"max_restart_attempts"`
 }
@@ -53,12 +54,9 @@ type AgentEntry struct {
 }
 
 type RepairConfig struct {
-	AutoRepair        bool     `toml:"auto_repair" json:"auto_repair"`
-	AutoRestart       bool     `toml:"auto_restart" json:"auto_restart"`
-	RestartCommand    string   `toml:"restart_command" json:"restart_command"`
-	RestartArgs       []string `toml:"restart_args" json:"restart_args"`
-	MaxRepairAttempts int      `toml:"max_repair_attempts" json:"max_repair_attempts"`
-	PromptTemplate    string   `toml:"prompt_template" json:"prompt_template"`
+	AutoRepair        bool   `toml:"auto_repair" json:"auto_repair"`
+	MaxRepairAttempts int    `toml:"max_repair_attempts" json:"max_repair_attempts"`
+	PromptTemplate    string `toml:"prompt_template" json:"prompt_template"`
 }
 
 type NotifyConfig struct {
@@ -75,9 +73,8 @@ type FeishuConfig struct {
 }
 
 type BarkConfig struct {
-	Enabled   bool   `toml:"enabled" json:"enabled"`
-	ServerURL string `toml:"server_url" json:"server_url"`
-	DeviceKey string `toml:"device_key" json:"device_key"`
+	Enabled bool   `toml:"enabled" json:"enabled"`
+	PushURL string `toml:"push_url" json:"push_url"`
 }
 
 type SMTPConfig struct {
@@ -125,6 +122,9 @@ func Load(path string) (*Config, error) {
 
 func (c *Config) normalize() error {
 	var err error
+	if c.Monitor.ExitGracePeriodSec <= 0 {
+		c.Monitor.ExitGracePeriodSec = 20
+	}
 	c.Monitor.PIDFile, err = ExpandPath(c.Monitor.PIDFile)
 	if err != nil {
 		return err
@@ -149,10 +149,6 @@ func (c *Config) normalize() error {
 			return err
 		}
 	}
-	c.Repair.RestartCommand, err = ExpandPath(c.Repair.RestartCommand)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -162,6 +158,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Monitor.Port <= 0 {
 		return errors.New("monitor.port must be greater than 0")
+	}
+	if c.Monitor.ExitGracePeriodSec <= 0 {
+		return errors.New("monitor.exit_grace_period_sec must be greater than 0")
 	}
 	if c.Agent.DefaultAgent == "" {
 		return errors.New("agent.default_agent is required")
@@ -190,9 +189,6 @@ func (c *Config) Validate() error {
 	if c.Repair.MaxRepairAttempts <= 0 {
 		return errors.New("repair.max_repair_attempts must be greater than 0")
 	}
-	if c.Repair.AutoRestart && c.Repair.RestartCommand == "" {
-		return errors.New("repair.restart_command is required when auto_restart=true")
-	}
 	return nil
 }
 
@@ -210,6 +206,32 @@ func ExpandPath(path string) (string, error) {
 	return filepath.Clean(path), nil
 }
 
+func (b *BarkConfig) UnmarshalTOML(value any) error {
+	values, ok := value.(map[string]any)
+	if !ok {
+		return fmt.Errorf("invalid bark config")
+	}
+
+	if enabled, ok := values["enabled"].(bool); ok {
+		b.Enabled = enabled
+	}
+	if pushURL, ok := values["push_url"].(string); ok {
+		b.PushURL = pushURL
+	}
+	if b.PushURL != "" {
+		return nil
+	}
+
+	serverURL, _ := values["server_url"].(string)
+	deviceKey, _ := values["device_key"].(string)
+	serverURL = strings.TrimRight(serverURL, "/")
+	deviceKey = strings.Trim(deviceKey, "/")
+	if serverURL != "" && deviceKey != "" {
+		b.PushURL = serverURL + "/" + deviceKey
+	}
+	return nil
+}
+
 func Clone(src *Config) *Config {
 	if src == nil {
 		return &Config{}
@@ -219,7 +241,6 @@ func Clone(src *Config) *Config {
 	dst.Log.WatchPaths = slices.Clone(src.Log.WatchPaths)
 	dst.Notify.NotifyOn = slices.Clone(src.Notify.NotifyOn)
 	dst.Notify.SMTP.To = slices.Clone(src.Notify.SMTP.To)
-	dst.Repair.RestartArgs = slices.Clone(src.Repair.RestartArgs)
 	dst.Agent.Agents = make([]AgentEntry, len(src.Agent.Agents))
 	for index, agent := range src.Agent.Agents {
 		dst.Agent.Agents[index] = agent
