@@ -2,8 +2,6 @@ import SwiftUI
 
 struct StatusBarView: View {
     @EnvironmentObject private var appState: AppState
-    @Environment(\.openWindow) private var openWindow
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
@@ -13,9 +11,8 @@ struct StatusBarView: View {
             Button("重置监控", action: appState.resetMonitoring)
                 .disabled(appState.status.state != .exhausted)
             Divider()
-            Button("查看日志...") { openWindow(id: "logs") }
-            SettingsLink {
-                Text("设置...")
+            Button("设置...") {
+                AppDelegate.showSettingsWindow()
             }
             Divider()
             Button("退出 ClawKeep") {
@@ -24,16 +21,18 @@ struct StatusBarView: View {
         }
         .padding()
         .frame(width: 280)
-        .task {
-            appState.bootstrap()
-        }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(appState.isHealthy ? Color.green : (appState.isConnected ? Color.orange : Color.gray))
+                    .frame(width: 10, height: 10)
+                Text(appState.isHealthy ? "OpenClaw 正在运行" : appState.status.statusText)
+                    .font(.headline)
+            }
             Text(appState.status.processName)
-                .font(.headline)
-            Text(appState.status.statusText)
             Text("PID: \(appState.status.pid)")
                 .font(.caption)
                 .foregroundStyle(.secondary)

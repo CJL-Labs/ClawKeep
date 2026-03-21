@@ -41,11 +41,7 @@ Build an unsigned Release artifact:
 ./scripts/package.sh
 ```
 
-If you need to regenerate protobuf code first:
-
-```bash
-SKIP_PROTO=0 ./scripts/package-local.sh
-```
+The app now uses local JSON IPC over a Unix domain socket, so no protobuf/gRPC generation step is required for packaging.
 
 ## GitHub Actions
 
@@ -56,4 +52,4 @@ GitHub Actions builds an unsigned macOS Release artifact on every push, pull req
 
 When the pushed ref is a Git tag, the workflow also creates a GitHub Release and attaches the zip artifact.
 
-The CI build now uses the lightweight local IPC version of the app and no longer depends on the Swift gRPC package chain.
+The CI build now uses the lightweight local IPC version of the app and no longer depends on the Swift gRPC package chain. The Swift client path is `IPCClient.swift`, backed by JSON IPC over a Unix domain socket.

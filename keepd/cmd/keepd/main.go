@@ -14,7 +14,6 @@ import (
 	"claw-keep/keepd/internal/config"
 	"claw-keep/keepd/internal/crash"
 	"claw-keep/keepd/internal/ipcserver"
-	"claw-keep/keepd/internal/logcollector"
 	"claw-keep/keepd/internal/logging"
 	"claw-keep/keepd/internal/monitor"
 	"claw-keep/keepd/internal/notifier"
@@ -52,17 +51,10 @@ func main() {
 	}
 
 	notifyManager := notifier.NewManager(cfg.Notify, logger)
-	store := crash.NewStore(cfg.Log.CrashArchiveDir, cfg.Log.MaxArchiveDays)
 	configStore := config.NewStore(*configPath, cfg)
-
-	orc := orchestrator.New(cfg, logger, store, dispatcher, notifyManager)
-	collector, err := logcollector.New(cfg.Log, logger)
-	if err != nil {
-		logger.Error("log collector init failed", "error", err.Error())
-		os.Exit(1)
-	}
+	orc := orchestrator.New(cfg, logger, dispatcher, notifyManager)
 	mon := monitor.New(cfg.Monitor, logger)
-	ipcServer := ipcserver.New(*socketPath, configStore, logger, orc, collector, notifyManager)
+	ipcServer := ipcserver.New(*socketPath, configStore, logger, orc, notifyManager)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -90,7 +82,6 @@ func main() {
 					continue
 				}
 				mon.ApplyConfig(updated.Monitor)
-				collector.ApplyConfig(updated.Log)
 				notifyManager.ApplyConfig(updated.Notify)
 				orc.ApplyConfig(updated)
 				if err := logger.ApplyConfig(updated.Daemon.LogDir, updated.Daemon.LogLevel, updated.Daemon.LogRetainDays); err != nil {
@@ -102,13 +93,11 @@ func main() {
 
 	if *simulateCrash {
 		report := crash.Report{
-			ProcessName:    cfg.Monitor.ProcessName,
-			PID:            4242,
-			ExitCode:       1,
-			CrashTime:      time.Now(),
-			TailLogs:       []string{"panic: example failure", "service stopped unexpectedly"},
-			ErrLogTail:     "panic: example failure",
-			StderrSnapshot: "stacktrace omitted",
+			ProcessName: cfg.Monitor.ProcessName,
+			PID:         4242,
+			ExitCode:    1,
+			CrashTime:   time.Now(),
+			WatchPaths:  append([]string(nil), cfg.Log.WatchPaths...),
 		}
 
 		if err := orc.HandleCrash(ctx, report); err != nil {
@@ -119,11 +108,6 @@ func main() {
 		return
 	}
 
-	go func() {
-		if err := collector.Run(ctx); err != nil {
-			logger.Warn("log collector stopped", "error", err.Error())
-		}
-	}()
 	go mon.Run(ctx)
 	go func() {
 		if err := ipcServer.Run(ctx); err != nil {
@@ -142,13 +126,11 @@ func main() {
 					orc.UpdatePID(event.PID)
 				case monitor.EventProcessExit:
 					report := crash.Report{
-						ProcessName:    cfg.Monitor.ProcessName,
-						PID:            event.PID,
-						ExitCode:       event.ExitCode,
-						CrashTime:      event.Time,
-						TailLogs:       collector.SnapshotLines(cfg.Log.TailLinesOnCrash),
-						ErrLogTail:     collector.TailBySuffix("gateway.err.log", 50),
-						StderrSnapshot: collector.TailBySuffix("gateway.err.log", 20),
+						ProcessName: cfg.Monitor.ProcessName,
+						PID:         event.PID,
+						ExitCode:    event.ExitCode,
+						CrashTime:   event.Time,
+						WatchPaths:  append([]string(nil), cfg.Log.WatchPaths...),
 					}
 					if err := orc.HandleCrash(ctx, report); err != nil {
 						logger.Warn("handle crash failed", "error", err.Error())

@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"claw-keep/keepd/internal/config"
-	"claw-keep/keepd/internal/logcollector"
 	"claw-keep/keepd/internal/logging"
 	"claw-keep/keepd/internal/notifier"
 	"claw-keep/keepd/internal/orchestrator"
@@ -39,20 +38,18 @@ type Server struct {
 	configStore  ConfigStore
 	logger       *logging.Logger
 	orchestrator *orchestrator.Orchestrator
-	collector    *logcollector.Collector
 	notifier     *notifier.Manager
 
 	listener net.Listener
 	once     sync.Once
 }
 
-func New(socketPath string, configStore ConfigStore, logger *logging.Logger, orchestrator *orchestrator.Orchestrator, collector *logcollector.Collector, notifier *notifier.Manager) *Server {
+func New(socketPath string, configStore ConfigStore, logger *logging.Logger, orchestrator *orchestrator.Orchestrator, notifier *notifier.Manager) *Server {
 	return &Server{
 		socketPath:   socketPath,
 		configStore:  configStore,
 		logger:       logger,
 		orchestrator: orchestrator,
-		collector:    collector,
 		notifier:     notifier,
 	}
 }
@@ -155,8 +152,6 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) error {
 		return s.writeResponse(conn, response{OK: true, Result: true})
 	case "subscribe_status":
 		return s.streamStatus(ctx, conn)
-	case "subscribe_logs":
-		return s.streamLogs(ctx, conn, req.MaxBacklog)
 	default:
 		return s.writeResponse(conn, response{OK: false, Error: "unknown action"})
 	}
@@ -176,26 +171,6 @@ func (s *Server) streamStatus(ctx context.Context, conn net.Conn) error {
 				return nil
 			}
 			if err := encoder.Encode(event.Status); err != nil {
-				return err
-			}
-		}
-	}
-}
-
-func (s *Server) streamLogs(ctx context.Context, conn net.Conn, maxBacklog int) error {
-	entries, cancel := s.collector.Subscribe(maxBacklog)
-	defer cancel()
-
-	encoder := json.NewEncoder(conn)
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case entry, ok := <-entries:
-			if !ok {
-				return nil
-			}
-			if err := encoder.Encode(entry); err != nil {
 				return err
 			}
 		}

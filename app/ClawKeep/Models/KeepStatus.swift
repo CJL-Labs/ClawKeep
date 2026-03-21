@@ -22,16 +22,45 @@ struct KeepStatusModel: Codable, Equatable {
     var lastCrashTime: Date?
     var updatedAt: Date?
 
+    enum CodingKeys: String, CodingKey {
+        case state
+        case processName
+        case pid
+        case exitCode
+        case crashCount
+        case repairAttempts
+        case lastArchive
+        case detail
+        case lastCrashTime
+        case updatedAt
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        state = try container.decodeIfPresent(State.self, forKey: .state) ?? .unmonitored
+        processName = try container.decodeIfPresent(String.self, forKey: .processName) ?? "openclaw-gateway"
+        pid = try container.decodeIfPresent(Int.self, forKey: .pid) ?? 0
+        exitCode = try container.decodeIfPresent(Int.self, forKey: .exitCode) ?? 0
+        crashCount = try container.decodeIfPresent(Int.self, forKey: .crashCount) ?? 0
+        repairAttempts = try container.decodeIfPresent(Int.self, forKey: .repairAttempts) ?? 0
+        lastArchive = try container.decodeIfPresent(String.self, forKey: .lastArchive) ?? ""
+        detail = try container.decodeIfPresent(String.self, forKey: .detail) ?? ""
+        lastCrashTime = sanitize(date: try container.decodeIfPresent(Date.self, forKey: .lastCrashTime))
+        updatedAt = sanitize(date: try container.decodeIfPresent(Date.self, forKey: .updatedAt))
+    }
+
     var symbolName: String {
         switch state {
         case .watching:
-            return "shield.checkmark"
+            return "checkmark.shield.fill"
         case .crashDetected, .exhausted:
-            return "shield.slash"
+            return "exclamationmark.shield.fill"
         case .collecting, .repairing, .restarting:
             return "shield.lefthalf.filled"
         case .unmonitored:
-            return "shield"
+            return "shield.fill"
         }
     }
 
@@ -52,5 +81,10 @@ struct KeepStatusModel: Codable, Equatable {
         case .unmonitored:
             return "未监控"
         }
+    }
+
+    private func sanitize(date: Date?) -> Date? {
+        guard let date else { return nil }
+        return date.timeIntervalSince1970 <= 0 ? nil : date
     }
 }

@@ -13,7 +13,7 @@
 		0BD859C937A289FCAB942609 /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EC8FC07AF739F4CFD4A859C /* LogView.swift */; };
 		0EBC315A18A793A9B931FA51 /* NotifySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5C076C13ECE2C5348F83167 /* NotifySection.swift */; };
 		2C3DBB5F7097A2570D5826F3 /* StatusBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C444894F72037EFFFD250D84 /* StatusBarView.swift */; };
-		51A694708372E9C4C397BC01 /* GRPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43AD286598114DB256CC8BDC /* GRPCClient.swift */; };
+		51A694708372E9C4C397BC01 /* IPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43AD286598114DB256CC8BDC /* IPCClient.swift */; };
 		6D09036539507C39618E0F4C /* ClawKeepApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14115DF492CFB502CF9B16C /* ClawKeepApp.swift */; };
 		6F55E0F3F6F0652247DE199E /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 642325068606EA72CF34EE1E /* AppState.swift */; };
 		887138B7D2626D32AE26C62A /* MonitorSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D99A306C7BE95EFADE934240 /* MonitorSection.swift */; };
@@ -24,7 +24,7 @@
 
 /* Begin PBXFileReference section */
 		24C3726FE86D1D5369980A1B /* DaemonManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonManager.swift; sourceTree = "<group>"; };
-		43AD286598114DB256CC8BDC /* GRPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GRPCClient.swift; sourceTree = "<group>"; };
+		43AD286598114DB256CC8BDC /* IPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPCClient.swift; sourceTree = "<group>"; };
 		4D6B064CD1041EAB2325D50F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		59A90851777FD5157FD5D56D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		642325068606EA72CF34EE1E /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -106,7 +106,7 @@
 				4D6B064CD1041EAB2325D50F /* Assets.xcassets */,
 				A14115DF492CFB502CF9B16C /* ClawKeepApp.swift */,
 				24C3726FE86D1D5369980A1B /* DaemonManager.swift */,
-				43AD286598114DB256CC8BDC /* GRPCClient.swift */,
+				43AD286598114DB256CC8BDC /* IPCClient.swift */,
 				8D7455D66EAE30503A0A03BE /* Models */,
 				BD85704AD1EB2F7F08DFF999 /* Views */,
 			);
@@ -179,7 +179,7 @@
 				6F55E0F3F6F0652247DE199E /* AppState.swift in Sources */,
 				6D09036539507C39618E0F4C /* ClawKeepApp.swift in Sources */,
 				A93C83AE598BC08084B753A9 /* DaemonManager.swift in Sources */,
-				51A694708372E9C4C397BC01 /* GRPCClient.swift in Sources */,
+				51A694708372E9C4C397BC01 /* IPCClient.swift in Sources */,
 				D0BDA1A1268D4B19A7770001 /* LogSection.swift in Sources */,
 				0BD859C937A289FCAB942609 /* LogView.swift in Sources */,
 				887138B7D2626D32AE26C62A /* MonitorSection.swift in Sources */,

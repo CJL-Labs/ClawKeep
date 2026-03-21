@@ -1,17 +1,15 @@
 import SwiftUI
 
 struct LogView: View {
-    @EnvironmentObject private var appState: AppState
-
     var body: some View {
-        ScrollView {
-            Text(appState.logs.joined(separator: "\n"))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
+        VStack(alignment: .leading, spacing: 12) {
+            Text("OpenClaw 日志不再由 ClawKeep 持续采集。")
+                .font(.headline)
+            Text("修复 Agent 会直接根据设置里的日志路径去读取文件。这里不再显示实时日志流。")
+                .foregroundStyle(.secondary)
+            Spacer()
         }
-        .task {
-            appState.bootstrap()
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding()
     }
 }

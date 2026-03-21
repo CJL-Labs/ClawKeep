@@ -35,10 +35,7 @@ type MonitorConfig struct {
 }
 
 type LogConfig struct {
-	WatchPaths       []string `toml:"watch_paths" json:"watch_paths"`
-	CrashArchiveDir  string   `toml:"crash_archive_dir" json:"crash_archive_dir"`
-	TailLinesOnCrash int      `toml:"tail_lines_on_crash" json:"tail_lines_on_crash"`
-	MaxArchiveDays   int      `toml:"max_archive_days" json:"max_archive_days"`
+	WatchPaths []string `toml:"watch_paths" json:"watch_paths"`
 }
 
 type AgentConfig struct {
@@ -138,10 +135,6 @@ func (c *Config) normalize() error {
 			return err
 		}
 	}
-	c.Log.CrashArchiveDir, err = ExpandPath(c.Log.CrashArchiveDir)
-	if err != nil {
-		return err
-	}
 	c.Daemon.LogDir, err = ExpandPath(c.Daemon.LogDir)
 	if err != nil {
 		return err
@@ -169,9 +162,6 @@ func (c *Config) Validate() error {
 	}
 	if c.Monitor.Port <= 0 {
 		return errors.New("monitor.port must be greater than 0")
-	}
-	if c.Log.CrashArchiveDir == "" {
-		return errors.New("log.crash_archive_dir is required")
 	}
 	if c.Agent.DefaultAgent == "" {
 		return errors.New("agent.default_agent is required")

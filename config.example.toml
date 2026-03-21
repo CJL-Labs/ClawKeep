@@ -12,27 +12,24 @@ max_restart_attempts = 5
 
 [log]
 watch_paths = [
-  "/tmp/openclaw/",
-  "~/.openclaw/logs/"
+  "/tmp/openclaw/openclaw-*.log",
+  "~/.openclaw/logs/gateway.log",
+  "~/.openclaw/logs/gateway.err.log"
 ]
-crash_archive_dir = "~/.claw-keep/crashes/"
-tail_lines_on_crash = 200
-max_archive_days = 30
-
 [agent]
 default_agent = "claude"
 
 [[agent.agents]]
 name = "claude"
 cli_path = "/usr/local/bin/claude"
-cli_args = ["-p", "--model", "sonnet"]
+cli_args = ["--dangerously-skip-permissions", "-p", "{{prompt}}"]
 working_dir = "~/.openclaw/"
 timeout_sec = 300
 
 [[agent.agents]]
 name = "codex"
 cli_path = "/usr/local/bin/codex"
-cli_args = ["exec"]
+cli_args = ["exec", "{{prompt}}"]
 working_dir = "~/.openclaw/"
 timeout_sec = 300
 
@@ -62,22 +59,11 @@ notify_on = ["crash", "repair_start", "repair_success", "repair_fail", "restart"
 [notify.feishu]
 enabled = false
 webhook_url = ""
-secret = ""
 
 [notify.bark]
 enabled = false
 server_url = "https://api.day.app"
 device_key = ""
-
-[notify.smtp]
-enabled = false
-host = ""
-port = 465
-username = ""
-password = ""
-from = ""
-to = []
-use_tls = true
 
 [daemon]
 log_level = "info"

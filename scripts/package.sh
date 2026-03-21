@@ -17,7 +17,6 @@ mkdir -p "$DIST_DIR"
 BUILD_CONFIGURATION="$BUILD_CONFIGURATION" \
 DERIVED_DATA_PATH="$DERIVED_DATA_PATH" \
 CLONED_SOURCE_PACKAGES_DIR_PATH="$CLONED_SOURCE_PACKAGES_DIR_PATH" \
-SKIP_PROTO="${SKIP_PROTO:-1}" \
 "$ROOT/scripts/build.sh"
 
 if [[ ! -d "$APP_PATH" ]]; then
@@ -29,6 +28,11 @@ mkdir -p "$APP_PATH/Contents/Resources"
 cp "$ROOT/keepd/keepd" "$KEEPD_PATH"
 chmod +x "$KEEPD_PATH"
 cp "$ROOT/config.example.toml" "$CONFIG_PATH"
+
+# Re-sign nested helper and bundle after copying resources so macOS
+# can launch the embedded daemon from the packaged app.
+codesign --force --sign - "$KEEPD_PATH"
+codesign --force --deep --sign - "$APP_PATH"
 
 rm -f "$ZIP_PATH"
 ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"

@@ -47,7 +47,6 @@ type StatusEvent struct {
 type Orchestrator struct {
 	cfg        *config.Config
 	logger     *logging.Logger
-	store      *crash.Store
 	dispatcher *agent.Dispatcher
 	notifier   *notifier.Manager
 
@@ -60,11 +59,10 @@ type Orchestrator struct {
 	lastRestart time.Time
 }
 
-func New(cfg *config.Config, logger *logging.Logger, store *crash.Store, dispatcher *agent.Dispatcher, notifier *notifier.Manager) *Orchestrator {
+func New(cfg *config.Config, logger *logging.Logger, dispatcher *agent.Dispatcher, notifier *notifier.Manager) *Orchestrator {
 	return &Orchestrator{
 		cfg:        cfg,
 		logger:     logger,
-		store:      store,
 		dispatcher: dispatcher,
 		notifier:   notifier,
 		status: Status{
@@ -88,13 +86,6 @@ func (o *Orchestrator) HandleCrash(ctx context.Context, report crash.Report) err
 	}); err != nil {
 		return err
 	}
-
-	o.transition(StateCollecting, "collecting crash artifacts")
-	archivePath, err := o.store.Save(report)
-	if err != nil {
-		return err
-	}
-	o.setArchive(archivePath)
 
 	if !o.cfg.Repair.AutoRepair {
 		o.transition(StateCrashDetected, "auto repair disabled; awaiting manual action")
@@ -176,13 +167,11 @@ func (o *Orchestrator) SubscribeStatus() (<-chan StatusEvent, func()) {
 
 func (o *Orchestrator) TriggerRepair(ctx context.Context) error {
 	report := crash.Report{
-		ProcessName:    o.cfg.Monitor.ProcessName,
-		PID:            o.status.PID,
-		ExitCode:       o.status.ExitCode,
-		CrashTime:      time.Now(),
-		TailLogs:       []string{"manual repair requested"},
-		ErrLogTail:     o.status.Detail,
-		StderrSnapshot: o.status.Detail,
+		ProcessName: o.cfg.Monitor.ProcessName,
+		PID:         o.status.PID,
+		ExitCode:    o.status.ExitCode,
+		CrashTime:   time.Now(),
+		WatchPaths:  append([]string(nil), o.cfg.Log.WatchPaths...),
 	}
 	return o.HandleCrash(ctx, report)
 }
@@ -253,13 +242,6 @@ func (o *Orchestrator) setRepairAttempts(attempt int) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.status.RepairAttempts = attempt
-	o.status.UpdatedAt = time.Now()
-}
-
-func (o *Orchestrator) setArchive(path string) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.status.LastArchive = path
 	o.status.UpdatedAt = time.Now()
 }
 

@@ -151,25 +151,7 @@ func (m *Monitor) tcpLoop(ctx context.Context) {
 		}
 
 		m.setPortState(true, "tcp connected")
-		done := make(chan error, 1)
-		go func() {
-			defer conn.Close()
-			var buffer [1]byte
-			_, readErr := conn.Read(buffer[:])
-			done <- readErr
-		}()
-
-		select {
-		case <-ctx.Done():
-			_ = conn.Close()
-			return
-		case readErr := <-done:
-			if readErr != nil {
-				m.setPortState(false, readErr.Error())
-			} else {
-				m.setPortState(false, "connection closed")
-			}
-		}
+		_ = conn.Close()
 		if !sleepContext(ctx, 2*time.Second) {
 			return
 		}

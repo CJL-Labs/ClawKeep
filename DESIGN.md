@@ -12,7 +12,7 @@
 
 ## 1. 整体架构
 
-SwiftUI 前端 + Go 后端双进程架构，通过 gRPC over Unix Domain Socket 通信。
+SwiftUI 前端 + Go 后端双进程架构，通过本地 IPC over Unix Domain Socket 通信。
 
 ```
 ┌──────────────────────────────────────────────┐
@@ -24,7 +24,7 @@ SwiftUI 前端 + Go 后端双进程架构，通过 gRPC over Unix Domain Socket 
 │  │  • Settings Window 配置窗口            │  │
 │  │  • Log Viewer 日志查看                 │  │
 │  └──────────────┬─────────────────────────┘  │
-│                 │ gRPC / UDS                  │
+│                 │ IPC / UDS                   │
 │                 │ $TMPDIR/claw-keep.sock  │
 │  ┌──────────────┴─────────────────────────┐  │
 │  │      keepd (Go daemon)             │  │
@@ -41,16 +41,16 @@ SwiftUI 前端 + Go 后端双进程架构，通过 gRPC over Unix Domain Socket 
 └──────────────────────────────────────────────┘
 ```
 
-选择 gRPC over UDS 的理由：
-- 强类型 protobuf，Swift/Go 都有成熟库
+选择 IPC over UDS 的理由：
 - UDS 比 TCP 更安全（文件权限控制），延迟更低
-- 支持 server-streaming RPC，实时推送状态和日志到 UI
+- JSON 行协议足够覆盖当前配置读写、状态订阅、日志订阅需求
+- 保留双向本地通信能力，同时避免 Swift 侧额外依赖链
 - UDS 路径使用 `$TMPDIR`（macOS 上是用户隔离的 `/var/folders/.../T/`），避免 `/tmp` 全局可写的安全隐患
 
 SwiftUI 进程职责：启动/管理 keepd 子进程、渲染 UI、转发用户操作。
 keepd 进程职责：所有核心逻辑，无 UI 依赖，可独立运行和测试。
 
-### gRPC 重连机制
+### IPC 重连机制
 
 SwiftUI 客户端需要处理 keepd 崩溃或重启的情况：
 - 检测到连接断开后，使用指数退避重连（初始 1s，最大 30s）
@@ -65,10 +65,6 @@ SwiftUI 客户端需要处理 keepd 崩溃或重启的情况：
 claw-keep/
 ├── Makefile
 ├── config.example.toml
-├── proto/keep/v1/
-│   ├── keep.proto          # 主服务定义
-│   ├── config.proto            # 配置消息
-│   └── types.proto             # 共享类型
 ├── keepd/                  # Go daemon
 │   ├── go.mod / go.sum
 │   ├── cmd/keepd/main.go
@@ -79,13 +75,13 @@ claw-keep/
 │       ├── agent/              # agent 调度 (claude/codex/通用)
 │       ├── notifier/           # 飞书/Bark/SMTP 通知
 │       ├── orchestrator/       # 核心编排状态机
-│       └── grpcserver/         # gRPC 服务实现
+│       └── ipcserver/          # Unix Socket JSON IPC 服务
 ├── app/                        # SwiftUI macOS app
 │   ├── ClawKeep.xcodeproj/
 │   └── ClawKeep/
 │       ├── ClawKeepApp.swift
 │       ├── DaemonManager.swift # keepd 生命周期管理
-│       ├── GRPCClient.swift
+│       ├── IPCClient.swift
 │       ├── Views/
 │       │   ├── StatusBarView.swift
 │       │   ├── SettingsView.swift
@@ -98,7 +94,6 @@ claw-keep/
 │           └── KeepStatus.swift
 └── scripts/
     ├── build.sh
-    ├── gen-proto.sh
     └── package.sh
 ```
 
@@ -413,7 +408,7 @@ use_tls = true
 ```
 
 每个状态转换都会：
-1. 更新 KeepStatus 并通过 gRPC stream 推送到 UI
+1. 更新 KeepStatus 并通过 IPC stream 推送到 UI
 2. 根据配置决定是否发送通知
 
 ### Exhausted 终态说明
@@ -534,25 +529,20 @@ SwiftUI Settings 窗口，TabView 分区：
 ### 11.1 构建流程
 
 ```bash
-# 1. 生成 protobuf 代码
-scripts/gen-proto.sh
-# → keepd/gen/keep/v1/*.go
-# → app/ClawKeep/Gen/*.swift
-
-# 2. 编译 Go daemon (universal binary)
+# 1. 编译 Go daemon (universal binary)
 cd keepd
 CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o keepd-arm64 ./cmd/keepd
 CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o keepd-amd64 ./cmd/keepd
 lipo -create -output keepd keepd-arm64 keepd-amd64
 
-# 3. 编译 SwiftUI app (Xcode)
+# 2. 编译 SwiftUI app (Xcode)
 xcodebuild -project app/ClawKeep.xcodeproj \
   -scheme ClawKeep -configuration Release
 
-# 4. 嵌入 keepd 到 .app bundle
+# 3. 嵌入 keepd 到 .app bundle
 cp keepd ClawKeep.app/Contents/MacOS/
 
-# 5. 签名
+# 4. 签名
 codesign --deep --force --sign - ClawKeep.app
 ```
 
@@ -570,17 +560,9 @@ codesign --deep --force --sign - ClawKeep.app
 
 | 依赖 | 用途 |
 |------|------|
-| google.golang.org/grpc | gRPC server |
 | github.com/BurntSushi/toml | TOML 配置解析 |
 | github.com/fsnotify/fsnotify | 文件变化监听（日志 + 配置热更新） |
 | golang.org/x/sys | kqueue syscall |
-
-### Swift (app)
-
-| 依赖 | 用途 |
-|------|------|
-| grpc-swift-nio-transport | gRPC client |
-| swift-protobuf | protobuf 序列化 |
 
 ---
 

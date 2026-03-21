@@ -8,6 +8,27 @@ struct AppConfig: Codable, Equatable {
     var repair = RepairConfig()
     var notify = NotifyConfig()
     var daemon = DaemonConfig()
+
+    enum CodingKeys: String, CodingKey {
+        case monitor
+        case log
+        case agent
+        case repair
+        case notify
+        case daemon
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        monitor = try container.decodeIfPresent(MonitorConfig.self, forKey: .monitor) ?? MonitorConfig()
+        log = try container.decodeIfPresent(LogConfig.self, forKey: .log) ?? LogConfig()
+        agent = try container.decodeIfPresent(AgentConfig.self, forKey: .agent) ?? AgentConfig()
+        repair = try container.decodeIfPresent(RepairConfig.self, forKey: .repair) ?? RepairConfig()
+        notify = try container.decodeIfPresent(NotifyConfig.self, forKey: .notify) ?? NotifyConfig()
+        daemon = try container.decodeIfPresent(DaemonConfig.self, forKey: .daemon) ?? DaemonConfig()
+    }
 }
 
 struct MonitorConfig: Codable, Equatable {
@@ -25,9 +46,6 @@ struct MonitorConfig: Codable, Equatable {
 
 struct LogConfig: Codable, Equatable {
     var watchPaths: [String] = []
-    var crashArchiveDir = ""
-    var tailLinesOnCrash = 200
-    var maxArchiveDays = 30
 }
 
 struct AgentConfig: Codable, Equatable {
@@ -42,6 +60,27 @@ struct AgentEntry: Codable, Equatable {
     var workingDir = ""
     var timeoutSec = 300
     var env: [String: String] = [:]
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case cliPath
+        case cliArgs
+        case workingDir
+        case timeoutSec
+        case env
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        cliPath = try container.decodeIfPresent(String.self, forKey: .cliPath) ?? ""
+        cliArgs = try container.decodeIfPresent([String].self, forKey: .cliArgs) ?? []
+        workingDir = try container.decodeIfPresent(String.self, forKey: .workingDir) ?? ""
+        timeoutSec = try container.decodeIfPresent(Int.self, forKey: .timeoutSec) ?? 300
+        env = try container.decodeIfPresent([String: String].self, forKey: .env) ?? [:]
+    }
 }
 
 struct RepairConfig: Codable, Equatable {
@@ -58,18 +97,65 @@ struct NotifyConfig: Codable, Equatable {
     var feishu = FeishuConfig()
     var bark = BarkConfig()
     var smtp = SMTPConfig()
+
+    enum CodingKeys: String, CodingKey {
+        case notifyOn
+        case feishu
+        case bark
+        case smtp
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        notifyOn = try container.decodeIfPresent([String].self, forKey: .notifyOn) ?? []
+        feishu = try container.decodeIfPresent(FeishuConfig.self, forKey: .feishu) ?? FeishuConfig()
+        bark = try container.decodeIfPresent(BarkConfig.self, forKey: .bark) ?? BarkConfig()
+        smtp = try container.decodeIfPresent(SMTPConfig.self, forKey: .smtp) ?? SMTPConfig()
+    }
 }
 
 struct FeishuConfig: Codable, Equatable {
     var enabled = false
     var webhookURL = ""
     var secret = ""
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case webhookURL = "webhook_url"
+        case secret
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        webhookURL = try container.decodeIfPresent(String.self, forKey: .webhookURL) ?? ""
+        secret = try container.decodeIfPresent(String.self, forKey: .secret) ?? ""
+    }
 }
 
 struct BarkConfig: Codable, Equatable {
     var enabled = false
     var serverURL = "https://api.day.app"
     var deviceKey = ""
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case serverURL = "server_url"
+        case deviceKey = "device_key"
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        serverURL = try container.decodeIfPresent(String.self, forKey: .serverURL) ?? "https://api.day.app"
+        deviceKey = try container.decodeIfPresent(String.self, forKey: .deviceKey) ?? ""
+    }
 }
 
 struct SMTPConfig: Codable, Equatable {
@@ -81,20 +167,37 @@ struct SMTPConfig: Codable, Equatable {
     var from = ""
     var to: [String] = []
     var useTLS = true
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case host
+        case port
+        case username
+        case password
+        case from
+        case to
+        case useTLS = "use_tls"
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
+        port = try container.decodeIfPresent(Int.self, forKey: .port) ?? 465
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
+        password = try container.decodeIfPresent(String.self, forKey: .password) ?? ""
+        from = try container.decodeIfPresent(String.self, forKey: .from) ?? ""
+        to = try container.decodeIfPresent([String].self, forKey: .to) ?? []
+        useTLS = try container.decodeIfPresent(Bool.self, forKey: .useTLS) ?? true
+    }
 }
 
 struct DaemonConfig: Codable, Equatable {
     var logLevel = "info"
     var logDir = ""
     var logRetainDays = 7
-}
-
-struct LogEntryModel: Codable, Equatable {
-    var time: Date?
-    var level = "info"
-    var source = ""
-    var message = ""
-    var rawLine = ""
 }
 
 private struct IPCRequest: Encodable {
@@ -208,12 +311,23 @@ private final class UnixSocketConnection: @unchecked Sendable {
     }
 }
 
-@MainActor
-final class GRPCClient {
+private actor SocketPathStore {
     private var socketPath = ""
 
+    func set(_ path: String) {
+        socketPath = path
+    }
+
+    func get() -> String {
+        socketPath
+    }
+}
+
+final class IPCClient: Sendable {
+    private let socketPathStore = SocketPathStore()
+
     func connect(socketPath: String) async throws {
-        self.socketPath = socketPath
+        await socketPathStore.set(socketPath)
     }
 
     func fetchStatus() async throws -> KeepStatusModel {
@@ -248,14 +362,8 @@ final class GRPCClient {
         try await stream(action: "subscribe_status", as: KeepStatusModel.self, onEvent: onEvent)
     }
 
-    func subscribeLogs(onEvent: @escaping @Sendable (String) async -> Void) async throws {
-        try await stream(action: "subscribe_logs", maxBacklog: 50, as: LogEntryModel.self) { entry in
-            let message = entry.message.isEmpty ? entry.rawLine : entry.message
-            await onEvent("[\(entry.level)] \(message)")
-        }
-    }
-
     private func request<Result: Decodable & Sendable>(action: String, channel: String? = nil, maxBacklog: Int? = nil, config: AppConfig? = nil, as: Result.Type) async throws -> Result {
+        let socketPath = await socketPathStore.get()
         guard !socketPath.isEmpty else {
             throw IPCError.missingSocketPath
         }
@@ -288,6 +396,7 @@ final class GRPCClient {
     }
 
     private func stream<Result: Decodable & Sendable>(action: String, maxBacklog: Int? = nil, as: Result.Type, onEvent: @escaping @Sendable (Result) async -> Void) async throws {
+        let socketPath = await socketPathStore.get()
         guard !socketPath.isEmpty else {
             throw IPCError.missingSocketPath
         }

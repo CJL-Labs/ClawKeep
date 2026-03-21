@@ -149,17 +149,13 @@ func (d *Dispatcher) Dispatch(ctx context.Context, report crash.Report) (*Result
 func (d *Dispatcher) renderPromptLocked(report crash.Report) (string, error) {
 	var buffer bytes.Buffer
 	data := struct {
-		ExitCode       int
-		CrashTime      string
-		TailLogs       string
-		StderrSnapshot string
-		ErrLogTail     string
+		ExitCode   int
+		CrashTime  string
+		WatchPaths string
 	}{
-		ExitCode:       report.ExitCode,
-		CrashTime:      report.CrashTime.Format(time.RFC3339),
-		TailLogs:       joinLines(report.TailLogs),
-		StderrSnapshot: report.StderrSnapshot,
-		ErrLogTail:     report.ErrLogTail,
+		ExitCode:   report.ExitCode,
+		CrashTime:  report.CrashTime.Format(time.RFC3339),
+		WatchPaths: joinLines(report.WatchPaths),
 	}
 	if err := d.promptTemplate.Execute(&buffer, data); err != nil {
 		return "", err
@@ -188,7 +184,7 @@ func (a *cliAgent) Repair(ctx context.Context, _ crash.Report, prompt string) (*
 	commandCtx, cancel := context.WithTimeout(ctx, a.timeout)
 	defer cancel()
 
-	args := append(append([]string{}, a.args...), prompt)
+	args := a.buildArgs(prompt)
 	command := exec.CommandContext(commandCtx, a.path, args...)
 	command.Dir = a.workingDir
 	command.Env = os.Environ()
@@ -210,6 +206,27 @@ func (a *cliAgent) Repair(ctx context.Context, _ crash.Report, prompt string) (*
 		Output:    string(output),
 		Duration:  duration,
 	}, nil
+}
+
+func (a *cliAgent) buildArgs(prompt string) []string {
+	if len(a.args) == 0 {
+		return []string{prompt}
+	}
+
+	args := make([]string, 0, len(a.args)+1)
+	inserted := false
+	for _, arg := range a.args {
+		if strings.Contains(arg, "{{prompt}}") {
+			args = append(args, strings.ReplaceAll(arg, "{{prompt}}", prompt))
+			inserted = true
+			continue
+		}
+		args = append(args, arg)
+	}
+	if !inserted {
+		args = append(args, prompt)
+	}
+	return args
 }
 
 func joinLines(lines []string) string {
