@@ -541,7 +541,7 @@ final class AppState: ObservableObject {
         menuBarAnimationTask = Task { [weak self] in
             while let self, !Task.isCancelled {
                 self.menuBarAnimationTick = (self.menuBarAnimationTick + 1) % 10_000
-                try? await Task.sleep(nanoseconds: 90_000_000)
+                try? await Task.sleep(nanoseconds: 50_000_000)
             }
         }
     }

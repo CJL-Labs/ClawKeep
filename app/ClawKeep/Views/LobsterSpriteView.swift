@@ -1,35 +1,38 @@
 import AppKit
 import SwiftUI
 
+// MARK: - Menu Bar Label
+
 struct LobsterMenuBarLabel: View {
+    @EnvironmentObject private var appState: AppState
     let state: StatusMascotState
     let tick: Int
 
     var body: some View {
         Image(nsImage: LobsterMenuIconRenderer.image(state: state, tick: tick))
             .renderingMode(.template)
-            .interpolation(.none)
-            .frame(width: 18, height: 14)
-            .accessibilityLabel("ClawKeep \(state.title)")
     }
 }
+
+// MARK: - Status Badge (Popover Header)
 
 struct LobsterStatusBadgeView: View {
     let state: StatusMascotState
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(state.tint.opacity(0.13))
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(state.tint.opacity(0.45), lineWidth: 1.2)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(state.tint.opacity(0.15))
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(state.tint.opacity(0.4), lineWidth: 2)
 
-            LobsterSpriteView(state: state, size: CGSize(width: 64, height: 38), showsBackdrop: true)
-                .padding(.top, 1)
+            LobsterSpriteView(state: state, size: CGSize(width: 75, height: 65), showsBackdrop: false)
         }
-        .frame(width: 78, height: 68)
+        .frame(width: 95, height: 85)
     }
 }
+
+// MARK: - Animated Sprite Canvas
 
 struct LobsterSpriteView: View {
     let state: StatusMascotState
@@ -39,9 +42,12 @@ struct LobsterSpriteView: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: frameInterval)) { timeline in
             Canvas(rendersAsynchronously: true) { context, canvasSize in
+                let frameCount = LobsterRenderer.frameCount(for: state)
+                let interval = frameInterval
                 let t = timeline.date.timeIntervalSinceReferenceDate
-                let pose = LobsterPose(state: state, t: t)
-                drawLobster(in: &context, size: canvasSize, pose: pose)
+                let frame = Int(t / interval) % max(1, frameCount)
+
+                LobsterRenderer.draw(in: context, size: canvasSize, state: state, frame: frame, isIcon: false)
             }
             .frame(width: size.width, height: size.height)
         }
@@ -49,302 +55,505 @@ struct LobsterSpriteView: View {
 
     private var frameInterval: TimeInterval {
         switch state {
-        case .busy, .fixing, .error:
-            return 1.0 / 22.0
-        default:
-            return 1.0 / 14.0
+        case .busy: return 0.08
+        case .fixing: return 0.1
+        case .error: return 0.05
+        default: return 0.15
+        }
+    }
+}
+
+// MARK: - Popover Lobster Renderer (Clean Chibi Style)
+
+struct LobsterRenderer {
+    static func frameCount(for state: StatusMascotState) -> Int {
+        switch state {
+        case .idle: return 8
+        case .busy: return 4
+        case .fixing: return 4
+        case .success: return 6
+        case .error: return 6
+        case .restarting: return 8
+        case .failed: return 2
         }
     }
 
-    private func drawLobster(in context: inout GraphicsContext, size: CGSize, pose: LobsterPose) {
-        let shellColor = shellColor(for: state, t: pose.flash)
-        let outlineColor = Color.black.opacity(0.68)
-        let eyeColor = Color.white.opacity(0.96)
+    static func draw(in context: GraphicsContext, size: CGSize, state: StatusMascotState, frame: Int, isIcon: Bool) {
+        let scale = min(size.width, size.height) / 100.0
 
-        context.translateBy(x: size.width * 0.5 + pose.shake, y: size.height * 0.52 + pose.bob + pose.drop)
-        context.rotate(by: .degrees(pose.rotation))
+        var ctx = context
+        ctx.translateBy(x: size.width / 2.0, y: size.height / 2.0)
 
-        let bodyWidth = size.width * 0.52
-        let bodyHeight = size.height * 0.46
-        let bodyRect = CGRect(
-            x: -bodyWidth * 0.5,
-            y: -bodyHeight * 0.5,
-            width: bodyWidth,
-            height: bodyHeight
-        )
+        // Bounce / bob
+        let bob: CGFloat = {
+            switch state {
+            case .idle: return sin(Double(frame) * .pi / 4.0) * 1.5
+            case .busy: return sin(Double(frame) * .pi / 2.0) * 3.0
+            case .error: return CGFloat.random(in: -3...3)
+            case .restarting: return sin(Double(frame) * .pi / 4.0) * 2.0
+            default: return 0
+            }
+        }()
+        ctx.translateBy(x: 0, y: bob * scale)
+        ctx.scaleBy(x: scale, y: scale)
 
-        if showsBackdrop {
-            let glow = Path(ellipseIn: bodyRect.insetBy(dx: -bodyWidth * 0.35, dy: -bodyHeight * 0.3))
-            context.fill(glow, with: .color(shellColor.opacity(0.17)))
+        let mainColor = isIcon ? Color.primary : state.tint
+
+        drawBody(in: &ctx, color: mainColor, isIcon: isIcon)
+        drawTail(in: &ctx, color: mainColor, isIcon: isIcon)
+        drawAntennae(in: &ctx, color: mainColor, isIcon: isIcon, frame: frame, state: state)
+        drawClaws(in: &ctx, color: mainColor, isIcon: isIcon, state: state, frame: frame)
+
+        if !isIcon {
+            drawFace(in: &ctx, state: state, frame: frame)
+            drawAccessories(in: &ctx, state: state, frame: frame)
         }
+    }
 
+    // MARK: Body
+
+    private static func drawBody(in ctx: inout GraphicsContext, color: Color, isIcon: Bool) {
+        // Round chibi body
+        let bodyRect = CGRect(x: -30, y: -18, width: 60, height: 50)
+        let body = Path(ellipseIn: bodyRect)
+
+        if !isIcon {
+            ctx.fill(body, with: .color(color))
+            // Light belly
+            let bellyRect = CGRect(x: -18, y: -5, width: 36, height: 30)
+            ctx.fill(Path(ellipseIn: bellyRect), with: .color(Color.white.opacity(0.35)))
+        } else {
+            ctx.fill(body, with: .color(color))
+        }
+    }
+
+    // MARK: Tail
+
+    private static func drawTail(in ctx: inout GraphicsContext, color: Color, isIcon: Bool) {
         var tail = Path()
-        tail.move(to: CGPoint(x: -bodyWidth * 0.56, y: 0))
-        tail.addLine(to: CGPoint(x: -bodyWidth * 0.82, y: -bodyHeight * 0.2))
-        tail.addLine(to: CGPoint(x: -bodyWidth * 0.8, y: bodyHeight * 0.2))
-        tail.closeSubpath()
-        context.fill(tail, with: .color(shellColor.opacity(0.92)))
-        context.stroke(tail, with: .color(outlineColor), lineWidth: size.width * 0.035)
+        // Simple fan tail at bottom
+        tail.move(to: CGPoint(x: -10, y: 28))
+        tail.addQuadCurve(to: CGPoint(x: 10, y: 28), control: CGPoint(x: 0, y: 24))
+        tail.addQuadCurve(to: CGPoint(x: 18, y: 42), control: CGPoint(x: 18, y: 34))
+        tail.addQuadCurve(to: CGPoint(x: -18, y: 42), control: CGPoint(x: 0, y: 48))
+        tail.addQuadCurve(to: CGPoint(x: -10, y: 28), control: CGPoint(x: -18, y: 34))
+        ctx.fill(tail, with: .color(color))
+    }
 
-        let body = Path(roundedRect: bodyRect, cornerSize: CGSize(width: bodyHeight * 0.45, height: bodyHeight * 0.45))
-        context.fill(body, with: .color(shellColor))
-        context.stroke(body, with: .color(outlineColor), lineWidth: size.width * 0.04)
+    // MARK: Antennae
 
-        drawLegs(in: &context, bodyWidth: bodyWidth, bodyHeight: bodyHeight, phase: pose.legPhase, lineWidth: size.width * 0.038, color: outlineColor)
+    private static func drawAntennae(in ctx: inout GraphicsContext, color: Color, isIcon: Bool, frame: Int, state: StatusMascotState) {
+        let sway = sin(Double(frame) * 0.8) * 3.0
 
-        drawClaw(in: &context, side: -1, bodyWidth: bodyWidth, bodyHeight: bodyHeight, offset: pose.clawPhase, lineWidth: size.width * 0.043, color: outlineColor, fill: shellColor)
-        drawClaw(in: &context, side: 1, bodyWidth: bodyWidth, bodyHeight: bodyHeight, offset: -pose.clawPhase, lineWidth: size.width * 0.043, color: outlineColor, fill: shellColor)
+        var ant = Path()
+        // Left antenna
+        ant.move(to: CGPoint(x: -8, y: -16))
+        ant.addQuadCurve(to: CGPoint(x: -20 + sway, y: -48), control: CGPoint(x: -18, y: -30))
+        // Right antenna
+        ant.move(to: CGPoint(x: 8, y: -16))
+        ant.addQuadCurve(to: CGPoint(x: 20 - sway, y: -48), control: CGPoint(x: 18, y: -30))
 
-        let eyeOffsetY = bodyHeight * 0.2
-        let eyeX = bodyWidth * 0.2
-        let eyeSize = size.width * 0.072
-        let pupilHeight = pose.blink ? eyeSize * 0.22 : eyeSize * 0.55
-        for sign in [-1.0, 1.0] {
-            let eyeRect = CGRect(x: eyeX - eyeSize * 0.5, y: sign * eyeOffsetY - eyeSize * 0.5, width: eyeSize, height: eyeSize)
-            let eye = Path(ellipseIn: eyeRect)
-            context.fill(eye, with: .color(eyeColor))
-            context.stroke(eye, with: .color(outlineColor), lineWidth: max(1, size.width * 0.018))
+        let lineW: CGFloat = isIcon ? 1.5 : 2.5
+        ctx.stroke(ant, with: .color(color), lineWidth: lineW)
 
-            let pupilRect = CGRect(
-                x: eyeX - eyeSize * 0.11,
-                y: sign * eyeOffsetY - pupilHeight * 0.5,
-                width: eyeSize * 0.22,
-                height: max(1, pupilHeight)
-            )
-            let pupil = Path(roundedRect: pupilRect, cornerRadius: pupilRect.width * 0.5)
-            context.fill(pupil, with: .color(.black.opacity(0.86)))
+        if !isIcon {
+            // Small round tips
+            ctx.fill(Path(ellipseIn: CGRect(x: -23 + sway, y: -52, width: 6, height: 6)), with: .color(color))
+            ctx.fill(Path(ellipseIn: CGRect(x: 17 - sway, y: -52, width: 6, height: 6)), with: .color(color))
         }
     }
 
-    private func drawLegs(in context: inout GraphicsContext, bodyWidth: CGFloat, bodyHeight: CGFloat, phase: CGFloat, lineWidth: CGFloat, color: Color) {
-        for idx in 0..<3 {
-            let x = -bodyWidth * 0.22 + CGFloat(idx) * bodyWidth * 0.2
-            let swing = sin(phase + CGFloat(idx) * 1.4)
-            let upperY = bodyHeight * 0.45
+    // MARK: Claws
 
-            var top = Path()
-            top.move(to: CGPoint(x: x, y: upperY))
-            top.addLine(to: CGPoint(x: x + bodyWidth * 0.1, y: upperY + bodyHeight * 0.18 + swing * bodyHeight * 0.06))
-            context.stroke(top, with: .color(color), lineWidth: lineWidth)
+    private static func drawClaws(in ctx: inout GraphicsContext, color: Color, isIcon: Bool, state: StatusMascotState, frame: Int) {
+        let clawSwing: Double = {
+            switch state {
+            case .busy: return sin(Double(frame) * .pi / 2.0) * 20.0
+            case .fixing: return sin(Double(frame) * .pi / 2.0) * 10.0
+            default: return sin(Double(frame) * 0.5) * 5.0
+            }
+        }()
 
-            var bottom = Path()
-            bottom.move(to: CGPoint(x: x, y: -upperY))
-            bottom.addLine(to: CGPoint(x: x + bodyWidth * 0.1, y: -upperY - bodyHeight * 0.18 - swing * bodyHeight * 0.06))
-            context.stroke(bottom, with: .color(color), lineWidth: lineWidth)
+        // Draw each claw as a rounded pincer shape
+        for side in [-1.0, 1.0] {
+            var cCtx = ctx
+            cCtx.translateBy(x: side * 32, y: -4)
+            cCtx.rotate(by: .degrees(side * (30.0 + clawSwing)))
+
+            // Arm segment
+            let arm = Path(roundedRect: CGRect(x: -3, y: -2, width: 16, height: 7), cornerRadius: 3)
+            cCtx.fill(arm, with: .color(color))
+
+            // Pincer (two small ovals forming a V)
+            var pincer = Path()
+            // Upper jaw
+            pincer.addEllipse(in: CGRect(x: 10, y: -5, width: 14, height: 7))
+            // Lower jaw
+            pincer.addEllipse(in: CGRect(x: 10, y: 1, width: 14, height: 7))
+            cCtx.fill(pincer, with: .color(color))
+
+            if !isIcon {
+                // Gap between jaws (dark line)
+                var gap = Path()
+                gap.move(to: CGPoint(x: 12, y: 1.5))
+                gap.addLine(to: CGPoint(x: 22, y: 1.5))
+                cCtx.stroke(gap, with: .color(Color.black.opacity(0.3)), lineWidth: 1.5)
+            }
         }
     }
 
-    private func drawClaw(in context: inout GraphicsContext, side: CGFloat, bodyWidth: CGFloat, bodyHeight: CGFloat, offset: CGFloat, lineWidth: CGFloat, color: Color, fill: Color) {
-        let baseY = side * bodyHeight * 0.24
-        let armStart = CGPoint(x: bodyWidth * 0.2, y: baseY)
-        let armEnd = CGPoint(
-            x: bodyWidth * 0.47,
-            y: baseY + side * bodyHeight * 0.26 + side * offset * bodyHeight * 0.06
-        )
+    // MARK: Face
 
-        var arm = Path()
-        arm.move(to: armStart)
-        arm.addLine(to: armEnd)
-        context.stroke(arm, with: .color(color), lineWidth: lineWidth)
+    private static func drawFace(in ctx: inout GraphicsContext, state: StatusMascotState, frame: Int) {
+        switch state {
+        case .error, .failed:
+            // X eyes
+            drawXEye(in: &ctx, center: CGPoint(x: -12, y: 0), size: 10)
+            drawXEye(in: &ctx, center: CGPoint(x: 12, y: 0), size: 10)
+            // Flat mouth
+            var mouth = Path()
+            mouth.move(to: CGPoint(x: -6, y: 14))
+            mouth.addLine(to: CGPoint(x: 6, y: 14))
+            ctx.stroke(mouth, with: .color(Color.black.opacity(0.7)), lineWidth: 2)
 
-        let clawRadius = bodyHeight * 0.14
-        let clawRect = CGRect(
-            x: armEnd.x - clawRadius,
-            y: armEnd.y - clawRadius,
-            width: clawRadius * 2,
-            height: clawRadius * 2
-        )
-        let claw = Path(ellipseIn: clawRect)
-        context.fill(claw, with: .color(fill.opacity(0.95)))
-        context.stroke(claw, with: .color(color), lineWidth: lineWidth * 0.85)
+            if state == .error {
+                // Angry eyebrows
+                var browL = Path()
+                browL.move(to: CGPoint(x: -18, y: -10))
+                browL.addLine(to: CGPoint(x: -6, y: -6))
+                ctx.stroke(browL, with: .color(Color.black.opacity(0.7)), lineWidth: 2.5)
+                var browR = Path()
+                browR.move(to: CGPoint(x: 18, y: -10))
+                browR.addLine(to: CGPoint(x: 6, y: -6))
+                ctx.stroke(browR, with: .color(Color.black.opacity(0.7)), lineWidth: 2.5)
+            }
+
+        case .success:
+            // Happy ^^ eyes
+            var eyeL = Path()
+            eyeL.move(to: CGPoint(x: -18, y: 0))
+            eyeL.addQuadCurve(to: CGPoint(x: -6, y: 0), control: CGPoint(x: -12, y: -8))
+            ctx.stroke(eyeL, with: .color(Color.black.opacity(0.8)), lineWidth: 2.5)
+            var eyeR = Path()
+            eyeR.move(to: CGPoint(x: 6, y: 0))
+            eyeR.addQuadCurve(to: CGPoint(x: 18, y: 0), control: CGPoint(x: 12, y: -8))
+            ctx.stroke(eyeR, with: .color(Color.black.opacity(0.8)), lineWidth: 2.5)
+            // Smile
+            var mouth = Path()
+            mouth.move(to: CGPoint(x: -7, y: 12))
+            mouth.addQuadCurve(to: CGPoint(x: 7, y: 12), control: CGPoint(x: 0, y: 20))
+            ctx.stroke(mouth, with: .color(Color.black.opacity(0.7)), lineWidth: 2)
+
+        default:
+            // Normal dot eyes with blink
+            let isBlinking = (state == .idle && frame % 6 == 0)
+            let eyeH: CGFloat = isBlinking ? 2 : 10
+            let eyeY: CGFloat = isBlinking ? -1 : -5
+
+            for xOff in [-12.0, 12.0] {
+                let eyeRect = CGRect(x: xOff - 5, y: eyeY, width: 10, height: eyeH)
+                ctx.fill(Path(ellipseIn: eyeRect), with: .color(.white))
+                if !isBlinking {
+                    // Pupil
+                    let pupil = CGRect(x: xOff - 3, y: eyeY + 2, width: 6, height: 6)
+                    ctx.fill(Path(ellipseIn: pupil), with: .color(Color(white: 0.15)))
+                    // Highlight
+                    ctx.fill(Path(ellipseIn: CGRect(x: xOff - 1, y: eyeY + 2, width: 3, height: 3)), with: .color(.white))
+                }
+            }
+
+            // Cheek blush
+            ctx.fill(Path(ellipseIn: CGRect(x: -24, y: 5, width: 10, height: 6)), with: .color(Color.red.opacity(0.2)))
+            ctx.fill(Path(ellipseIn: CGRect(x: 14, y: 5, width: 10, height: 6)), with: .color(Color.red.opacity(0.2)))
+
+            // Small smile
+            var mouth = Path()
+            mouth.move(to: CGPoint(x: -5, y: 13))
+            mouth.addQuadCurve(to: CGPoint(x: 5, y: 13), control: CGPoint(x: 0, y: 17))
+            ctx.stroke(mouth, with: .color(Color.black.opacity(0.6)), lineWidth: 1.8)
+        }
     }
 
-    private func shellColor(for state: StatusMascotState, t: CGFloat) -> Color {
+    private static func drawXEye(in ctx: inout GraphicsContext, center: CGPoint, size: CGFloat) {
+        let s = size / 2
+        var p = Path()
+        p.move(to: CGPoint(x: center.x - s, y: center.y - s))
+        p.addLine(to: CGPoint(x: center.x + s, y: center.y + s))
+        p.move(to: CGPoint(x: center.x + s, y: center.y - s))
+        p.addLine(to: CGPoint(x: center.x - s, y: center.y + s))
+        ctx.stroke(p, with: .color(Color.black.opacity(0.8)), lineWidth: 2.5)
+    }
+
+    // MARK: Accessories
+
+    private static func drawAccessories(in ctx: inout GraphicsContext, state: StatusMascotState, frame: Int) {
         switch state {
         case .idle:
-            return Color(red: 0.88, green: 0.45, blue: 0.36)
+            // Zzz particles (float upward)
+            if frame % 3 == 0 || frame % 3 == 1 {
+                let zTexts = ["z", "Z"]
+                let offsets: [(CGFloat, CGFloat, CGFloat)] = [(-28, -30, 0.5), (-35, -42, 0.7)]
+                for i in 0..<min(zTexts.count, offsets.count) {
+                    let (x, y, opacity) = offsets[i]
+                    let yOff = -CGFloat(frame % 4) * 2
+                    ctx.draw(
+                        Text(zTexts[i]).font(.system(size: 10, weight: .bold)).foregroundColor(Color.primary.opacity(opacity)),
+                        at: CGPoint(x: x, y: y + yOff)
+                    )
+                }
+            }
+
         case .busy:
-            return Color(red: 0.91, green: 0.35, blue: 0.3)
-        case .restarting:
-            return Color(red: 0.92, green: 0.55, blue: 0.31)
-        case .error:
-            return Color(red: 0.84 + 0.08 * t, green: 0.22, blue: 0.2)
+            // Small laptop
+            let laptopBase = Path(roundedRect: CGRect(x: -14, y: 16, width: 28, height: 3), cornerRadius: 1)
+            ctx.fill(laptopBase, with: .color(Color(white: 0.65)))
+            var screen = Path()
+            screen.addRoundedRect(in: CGRect(x: -11, y: 4, width: 22, height: 14), cornerSize: CGSize(width: 2, height: 2))
+            ctx.fill(screen, with: .color(Color(white: 0.8)))
+            ctx.stroke(screen, with: .color(Color(white: 0.5)), lineWidth: 1)
+            // Screen glow dot
+            let glowPhase = frame % 4
+            if glowPhase < 3 {
+                ctx.fill(Path(ellipseIn: CGRect(x: -2, y: 8, width: 4, height: 4)), with: .color(Color.cyan.opacity(0.6)))
+            }
+
         case .fixing:
-            return Color(red: 0.96, green: 0.5, blue: 0.24)
+            // Hard hat
+            var hat = Path()
+            hat.move(to: CGPoint(x: -22, y: -16))
+            hat.addQuadCurve(to: CGPoint(x: 22, y: -16), control: CGPoint(x: 0, y: -38))
+            hat.addLine(to: CGPoint(x: -22, y: -16))
+            ctx.fill(hat, with: .color(.yellow))
+            // Hat brim
+            let brim = Path(roundedRect: CGRect(x: -25, y: -18, width: 50, height: 5), cornerRadius: 2)
+            ctx.fill(brim, with: .color(Color.yellow.opacity(0.9)))
+
         case .success:
-            return Color(red: 0.96, green: 0.58, blue: 0.33)
+            // Sparkle stars
+            let t = Double(frame) * 0.8
+            for i in 0..<4 {
+                let angle = t + Double(i) * .pi / 2.0
+                let r: CGFloat = 38 + CGFloat(i % 2) * 8
+                let x = cos(angle) * r
+                let y = sin(angle) * r - 10
+                drawSparkle(in: &ctx, at: CGPoint(x: x, y: y), size: 5)
+            }
+
+        case .error:
+            // Smoke puffs rising
+            let puffPositions: [(CGFloat, CGFloat)] = [(-20, -35), (15, -40), (-5, -45)]
+            for (i, (px, py)) in puffPositions.enumerated() {
+                let yOff = -CGFloat(frame % 6) * 2
+                let alpha = max(0, 0.4 - Double(frame % 6) * 0.06)
+                let size: CGFloat = 8 + CGFloat(i) * 2
+                ctx.fill(
+                    Path(ellipseIn: CGRect(x: px - size/2, y: py + yOff - size/2, width: size, height: size)),
+                    with: .color(Color.gray.opacity(alpha))
+                )
+            }
+
+        case .restarting:
+            // Spinning motion arcs
+            let angle = Double(frame) * .pi / 4.0
+            for i in 0..<3 {
+                let a = angle + Double(i) * .pi * 2.0 / 3.0
+                var arc = Path()
+                arc.addArc(
+                    center: CGPoint(x: 0, y: 5),
+                    radius: 40,
+                    startAngle: .radians(a),
+                    endAngle: .radians(a + 0.5),
+                    clockwise: false
+                )
+                ctx.stroke(arc, with: .color(state.tint.opacity(0.5)), lineWidth: 2)
+            }
+
         case .failed:
-            return Color(red: 0.58, green: 0.44, blue: 0.4)
+            break
         }
+    }
+
+    private static func drawSparkle(in ctx: inout GraphicsContext, at center: CGPoint, size: CGFloat) {
+        // 4-point star sparkle
+        var p = Path()
+        p.move(to: CGPoint(x: center.x, y: center.y - size))
+        p.addLine(to: CGPoint(x: center.x + size * 0.3, y: center.y - size * 0.3))
+        p.addLine(to: CGPoint(x: center.x + size, y: center.y))
+        p.addLine(to: CGPoint(x: center.x + size * 0.3, y: center.y + size * 0.3))
+        p.addLine(to: CGPoint(x: center.x, y: center.y + size))
+        p.addLine(to: CGPoint(x: center.x - size * 0.3, y: center.y + size * 0.3))
+        p.addLine(to: CGPoint(x: center.x - size, y: center.y))
+        p.addLine(to: CGPoint(x: center.x - size * 0.3, y: center.y - size * 0.3))
+        p.closeSubpath()
+        ctx.fill(p, with: .color(.yellow))
     }
 }
 
-private struct LobsterPose {
-    let bob: CGFloat
-    let clawPhase: CGFloat
-    let legPhase: CGFloat
-    let rotation: Double
-    let shake: CGFloat
-    let drop: CGFloat
-    let blink: Bool
-    let flash: CGFloat
-
-    init(state: StatusMascotState, t: TimeInterval) {
-        let baseBlink = sin(t * 1.4) > 0.975
-        switch state {
-        case .idle:
-            bob = sin(t * 2.2) * 0.6
-            clawPhase = sin(t * 2.5) * 0.4
-            legPhase = CGFloat(t * 4.2)
-            rotation = sin(t * 1.8) * 1.4
-            shake = 0
-            drop = 0
-            blink = baseBlink
-            flash = 0
-        case .busy:
-            bob = sin(t * 10) * 0.9
-            clawPhase = sin(t * 18) * 1.0
-            legPhase = CGFloat(t * 18)
-            rotation = sin(t * 9) * 2.6
-            shake = sin(t * 19) * 0.6
-            drop = 0
-            blink = false
-            flash = 0
-        case .restarting:
-            bob = 0
-            clawPhase = sin(t * 8) * 0.7
-            legPhase = CGFloat(t * 12)
-            rotation = t * 240
-            shake = 0
-            drop = 0
-            blink = false
-            flash = 0
-        case .error:
-            bob = 0
-            clawPhase = sin(t * 20) * 1.0
-            legPhase = CGFloat(t * 22)
-            rotation = sin(t * 18) * 4.5
-            shake = sin(t * 30) * 1.8
-            drop = 0
-            blink = false
-            flash = CGFloat(abs(sin(t * 10)))
-        case .fixing:
-            bob = sin(t * 11) * 0.7
-            clawPhase = abs(sin(t * 16)) * 1.3
-            legPhase = CGFloat(t * 16)
-            rotation = sin(t * 11) * 1.9
-            shake = 0
-            drop = 0
-            blink = false
-            flash = 0
-        case .success:
-            bob = 0
-            clawPhase = abs(sin(t * 10)) * 1.2
-            legPhase = CGFloat(t * 12)
-            rotation = sin(t * 8) * 3
-            shake = 0
-            drop = -abs(sin(t * 8)) * 2.2
-            blink = false
-            flash = 0
-        case .failed:
-            bob = sin(t * 1.5) * 0.2
-            clawPhase = 0.12
-            legPhase = CGFloat(t * 1.2)
-            rotation = -6
-            shake = 0
-            drop = 1.5
-            blink = true
-            flash = 0
-        }
-    }
-}
+// MARK: - Menu Bar Icon Renderer (Front-Facing Chibi Head Silhouette)
 
 private enum LobsterMenuIconRenderer {
+
     static func image(state: StatusMascotState, tick: Int) -> NSImage {
-        let size = NSSize(width: 18, height: 14)
-        let image = NSImage(size: size)
-        image.lockFocusFlipped(false)
+        let w: CGFloat = 20
+        let h: CGFloat = 18
+        let image = NSImage(size: NSSize(width: w, height: h))
+        image.lockFocus()
         defer { image.unlockFocus() }
 
-        NSColor.clear.setFill()
-        NSRect(origin: .zero, size: size).fill()
+        NSColor.clear.set()
+        NSRect(origin: .zero, size: NSSize(width: w, height: h)).fill()
 
-        let time = Double(tick) * 0.12
-        let pose = LobsterPose(state: state, t: time)
-        drawLobsterIcon(size: size, pose: pose)
+        // Effective frame speed per state
+        let frame: Int
+        switch state {
+        case .idle:       frame = tick / 8
+        case .busy:       frame = tick
+        case .fixing:     frame = tick / 2
+        case .error:      frame = tick
+        case .restarting: frame = tick / 3
+        case .success:    frame = tick / 4
+        case .failed:     frame = 0
+        }
+
+        NSColor.black.set()
+
+        let cx = w / 2
+        // Note: AppKit y-axis is bottom-up. cy is vertical center of the head.
+        let baseY: CGFloat = 5.0 // head center baseline
+
+        // Per-state vertical offset
+        let yOff: CGFloat = {
+            switch state {
+            case .idle: return CGFloat(sin(Double(frame) * .pi / 4.0) * 0.4)
+            case .busy: return (frame % 2 == 0) ? 1.0 : -0.5
+            case .error: return CGFloat.random(in: -1.5...1.5)
+            default: return 0
+            }
+        }()
+        let cy = baseY + yOff
+
+        // --- Head (round) ---
+        let headR: CGFloat = 6.0
+        NSBezierPath(ovalIn: NSRect(x: cx - headR, y: cy - headR, width: headR * 2, height: headR * 2)).fill()
+
+        // --- Antennae (curving upward, symmetric) ---
+        let antSway: CGFloat = {
+            switch state {
+            case .busy: return (frame % 2 == 0) ? -1.0 : 1.0
+            case .error: return CGFloat.random(in: -1.5...1.5)
+            case .failed: return 0 // droopy handled separately
+            default: return CGFloat(sin(Double(frame) * .pi / 3.0) * 0.6)
+            }
+        }()
+
+        if state == .failed {
+            // Droopy antennae (curve outward and down)
+            let ant = NSBezierPath()
+            ant.lineWidth = 1.2
+            ant.move(to: NSPoint(x: cx - 3, y: cy + headR - 1))
+            ant.curve(to: NSPoint(x: cx - 8, y: cy + headR - 2),
+                      controlPoint1: NSPoint(x: cx - 5, y: cy + headR + 1),
+                      controlPoint2: NSPoint(x: cx - 7, y: cy + headR))
+            ant.move(to: NSPoint(x: cx + 3, y: cy + headR - 1))
+            ant.curve(to: NSPoint(x: cx + 8, y: cy + headR - 2),
+                      controlPoint1: NSPoint(x: cx + 5, y: cy + headR + 1),
+                      controlPoint2: NSPoint(x: cx + 7, y: cy + headR))
+            ant.stroke()
+        } else {
+            let ant = NSBezierPath()
+            ant.lineWidth = 1.2
+            // Left antenna
+            ant.move(to: NSPoint(x: cx - 3, y: cy + headR - 1))
+            ant.curve(to: NSPoint(x: cx - 7 + antSway, y: cy + headR + 6),
+                      controlPoint1: NSPoint(x: cx - 4, y: cy + headR + 2),
+                      controlPoint2: NSPoint(x: cx - 6 + antSway, y: cy + headR + 5))
+            // Right antenna
+            ant.move(to: NSPoint(x: cx + 3, y: cy + headR - 1))
+            ant.curve(to: NSPoint(x: cx + 7 + antSway, y: cy + headR + 6),
+                      controlPoint1: NSPoint(x: cx + 4, y: cy + headR + 2),
+                      controlPoint2: NSPoint(x: cx + 6 + antSway, y: cy + headR + 5))
+            ant.stroke()
+            // Antenna tips (small dots)
+            NSBezierPath(ovalIn: NSRect(x: cx - 8 + antSway, y: cy + headR + 5.5, width: 2, height: 2)).fill()
+            NSBezierPath(ovalIn: NSRect(x: cx + 6 + antSway, y: cy + headR + 5.5, width: 2, height: 2)).fill()
+        }
+
+        // --- Claws (symmetric on sides, animated swing) ---
+        let clawSwing: CGFloat = {
+            switch state {
+            case .busy: return CGFloat(sin(Double(frame) * .pi / 2.0)) * 2.5
+            case .fixing: return CGFloat(sin(Double(frame) * .pi / 2.0)) * 1.5
+            case .error: return 2.0 // wide open
+            case .success: return 1.5 // raised
+            default: return CGFloat(sin(Double(frame) * 0.3)) * 0.5
+            }
+        }()
+
+        let clawSize: CGFloat = 3.5
+        for side: CGFloat in [-1, 1] {
+            let clawCx = cx + side * (headR + 3)
+            let clawCy = cy + clawSwing * side * 0.3
+
+            // Arm stub connecting head to claw
+            let arm = NSBezierPath()
+            arm.lineWidth = 2.0
+            arm.move(to: NSPoint(x: cx + side * headR, y: cy))
+            arm.line(to: NSPoint(x: clawCx - side * clawSize * 0.3, y: clawCy))
+            arm.stroke()
+
+            // Pincer: two small ovals
+            let gap: CGFloat = 0.8 + abs(clawSwing) * 0.15
+            NSBezierPath(ovalIn: NSRect(x: clawCx - clawSize/2, y: clawCy + gap, width: clawSize, height: clawSize * 0.7)).fill()
+            NSBezierPath(ovalIn: NSRect(x: clawCx - clawSize/2, y: clawCy - gap - clawSize * 0.7, width: clawSize, height: clawSize * 0.7)).fill()
+        }
+
+        // --- State-specific indicators ---
+        switch state {
+        case .error:
+            // Exclamation mark above head
+            let ep = NSBezierPath()
+            ep.lineWidth = 1.5
+            ep.move(to: NSPoint(x: cx, y: cy + headR + 7))
+            ep.line(to: NSPoint(x: cx, y: cy + headR + 10))
+            ep.stroke()
+            NSBezierPath(ovalIn: NSRect(x: cx - 0.7, y: cy + headR + 5.5, width: 1.4, height: 1.4)).fill()
+
+        case .success:
+            // Small sparkle
+            if frame % 3 != 0 {
+                let sp = NSBezierPath()
+                sp.lineWidth = 0.8
+                let sx = cx + 8
+                let sy = cy + headR + 4
+                sp.move(to: NSPoint(x: sx, y: sy - 2)); sp.line(to: NSPoint(x: sx, y: sy + 2))
+                sp.move(to: NSPoint(x: sx - 2, y: sy)); sp.line(to: NSPoint(x: sx + 2, y: sy))
+                sp.stroke()
+            }
+
+        case .restarting:
+            // Small circular arrow
+            let arc = NSBezierPath()
+            arc.lineWidth = 0.8
+            arc.appendArc(withCenter: NSPoint(x: cx, y: cy + headR + 5),
+                          radius: 2.0,
+                          startAngle: CGFloat(Double(frame % 8) * 45),
+                          endAngle: CGFloat(Double(frame % 8) * 45 + 270))
+            arc.stroke()
+
+        case .fixing:
+            // Tiny wrench near right claw
+            let wp = NSBezierPath()
+            wp.lineWidth = 1.0
+            let wy = cy + ((frame % 4 < 2) ? 2.0 : -1.0)
+            wp.move(to: NSPoint(x: cx + headR + 5, y: wy))
+            wp.line(to: NSPoint(x: cx + headR + 8, y: wy + 1.5))
+            wp.stroke()
+
+        default:
+            break
+        }
 
         image.isTemplate = true
         return image
-    }
-
-    private static func drawLobsterIcon(size: NSSize, pose: LobsterPose) {
-        let stroke = NSColor.labelColor.withAlphaComponent(0.95)
-        let fill = NSColor.labelColor.withAlphaComponent(0.7)
-
-        let centerX = size.width * 0.52 + pose.shake * 0.22
-        let centerY = size.height * 0.52 + pose.bob * 0.16 + pose.drop * 0.16
-
-        let bodyRect = NSRect(x: centerX - 4.8, y: centerY - 3.3, width: 9.6, height: 6.6)
-        let bodyPath = NSBezierPath(roundedRect: bodyRect, xRadius: 2.4, yRadius: 2.4)
-        fill.setFill()
-        bodyPath.fill()
-        stroke.setStroke()
-        bodyPath.lineWidth = 0.9
-        bodyPath.stroke()
-
-        let tailPath = NSBezierPath()
-        tailPath.move(to: CGPoint(x: centerX - 4.8, y: centerY))
-        tailPath.line(to: CGPoint(x: centerX - 8.4, y: centerY + 2.2))
-        tailPath.line(to: CGPoint(x: centerX - 8.2, y: centerY - 2.2))
-        tailPath.close()
-        fill.setFill()
-        tailPath.fill()
-        stroke.setStroke()
-        tailPath.lineWidth = 0.85
-        tailPath.stroke()
-
-        let clawOffset = pose.clawPhase * 0.45
-        drawClaw(center: CGPoint(x: centerX + 5.2, y: centerY + 2.2 + clawOffset), fill: fill, stroke: stroke)
-        drawClaw(center: CGPoint(x: centerX + 5.2, y: centerY - 2.2 - clawOffset), fill: fill, stroke: stroke)
-
-        for index in 0..<3 {
-            let x = centerX - 1 + CGFloat(index) * 2
-            let swing = sin(pose.legPhase + CGFloat(index) * 1.1) * 0.4
-            let top = NSBezierPath()
-            top.move(to: CGPoint(x: x, y: centerY + 3))
-            top.line(to: CGPoint(x: x + 1.3, y: centerY + 4.3 + swing))
-            top.lineWidth = 0.8
-            stroke.setStroke()
-            top.stroke()
-
-            let bottom = NSBezierPath()
-            bottom.move(to: CGPoint(x: x, y: centerY - 3))
-            bottom.line(to: CGPoint(x: x + 1.3, y: centerY - 4.3 - swing))
-            bottom.lineWidth = 0.8
-            stroke.setStroke()
-            bottom.stroke()
-        }
-
-        let eyeTop = NSBezierPath(ovalIn: NSRect(x: centerX + 1.2, y: centerY + 1.05, width: 1.3, height: pose.blink ? 0.45 : 1.3))
-        let eyeBottom = NSBezierPath(ovalIn: NSRect(x: centerX + 1.2, y: centerY - 2.35, width: 1.3, height: pose.blink ? 0.45 : 1.3))
-        stroke.setFill()
-        eyeTop.fill()
-        eyeBottom.fill()
-    }
-
-    private static func drawClaw(center: CGPoint, fill: NSColor, stroke: NSColor) {
-        let arm = NSBezierPath()
-        arm.move(to: CGPoint(x: center.x - 2.5, y: center.y))
-        arm.line(to: CGPoint(x: center.x - 0.8, y: center.y))
-        arm.lineWidth = 0.82
-        stroke.setStroke()
-        arm.stroke()
-
-        let claw = NSBezierPath(ovalIn: NSRect(x: center.x - 0.8, y: center.y - 1.1, width: 2.2, height: 2.2))
-        fill.setFill()
-        claw.fill()
-        stroke.setStroke()
-        claw.lineWidth = 0.78
-        claw.stroke()
     }
 }
