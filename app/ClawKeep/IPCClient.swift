@@ -392,6 +392,10 @@ final class IPCClient: Sendable {
         _ = try await request(action: "trigger_repair", as: Bool.self)
     }
 
+    func restartGateway() async throws {
+        _ = try await request(action: "restart_gateway", as: Bool.self)
+    }
+
     func resetMonitoring() async throws {
         _ = try await request(action: "reset_monitoring", as: Bool.self)
     }

@@ -88,6 +88,54 @@ func TestUpdateConfigAppliesRuntimeBeforeResponding(t *testing.T) {
 	}
 }
 
+func TestRestartGatewayUsesInjectedHandler(t *testing.T) {
+	t.Parallel()
+
+	store := &stubConfigStore{cfg: validConfig()}
+	server := New("", store, nil, nil, nil, nil)
+	called := false
+	server.restartGateway = func(_ context.Context, cfg *config.Config) error {
+		called = true
+		if cfg.Monitor.ProcessName != "openclaw-gateway" {
+			t.Fatalf("unexpected config passed to restart handler: %+v", cfg.Monitor)
+		}
+		return nil
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- server.handleConn(context.Background(), serverConn)
+	}()
+
+	payload := []byte(`{"action":"restart_gateway"}` + "\n")
+	if _, err := clientConn.Write(payload); err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+
+	responseLine, err := bufio.NewReader(clientConn).ReadBytes('\n')
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	var response struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.Unmarshal(responseLine, &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !response.OK {
+		t.Fatalf("unexpected response: %s", string(responseLine))
+	}
+	if !called {
+		t.Fatal("expected restart handler to be called")
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("handleConn failed: %v", err)
+	}
+}
+
 func validConfig() *config.Config {
 	return &config.Config{
 		Monitor: config.MonitorConfig{

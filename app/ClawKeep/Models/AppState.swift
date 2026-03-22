@@ -579,10 +579,7 @@ final class AppState: ObservableObject {
 
             manualGatewayRestartPhase = .sendingCommand
             do {
-                try await Task.detached(priority: .userInitiated) {
-                    let manager = DaemonManager()
-                    try manager.restartGateway()
-                }.value
+                try await ipcClient.restartGateway()
             } catch {
                 try? await ipcClient.exitMaintenance()
                 throw error

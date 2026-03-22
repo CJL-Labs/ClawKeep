@@ -13,6 +13,7 @@ import (
 	"claw-keep/keepd/internal/config"
 	"claw-keep/keepd/internal/logging"
 	"claw-keep/keepd/internal/notifier"
+	"claw-keep/keepd/internal/openclawcli"
 	"claw-keep/keepd/internal/orchestrator"
 )
 
@@ -41,12 +42,13 @@ type response struct {
 }
 
 type Server struct {
-	socketPath    string
-	configStore   ConfigStore
-	logger        *logging.Logger
-	orchestrator  *orchestrator.Orchestrator
-	notifier      *notifier.Manager
-	configApplier ConfigApplier
+	socketPath     string
+	configStore    ConfigStore
+	logger         *logging.Logger
+	orchestrator   *orchestrator.Orchestrator
+	notifier       *notifier.Manager
+	configApplier  ConfigApplier
+	restartGateway func(context.Context, *config.Config) error
 
 	listener net.Listener
 	once     sync.Once
@@ -146,6 +148,21 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) error {
 		return s.writeResponse(conn, response{OK: true, Result: true})
 	case "reset_monitoring":
 		s.orchestrator.Reset()
+		return s.writeResponse(conn, response{OK: true, Result: true})
+	case "restart_gateway":
+		cfg := s.configStore.Config()
+		if cfg == nil {
+			return s.writeResponse(conn, response{OK: false, Error: "config is unavailable"})
+		}
+		restart := s.restartGateway
+		if restart == nil {
+			restart = func(ctx context.Context, _ *config.Config) error {
+				return openclawcli.RunGatewayRestart(ctx)
+			}
+		}
+		if err := restart(ctx, cfg); err != nil {
+			return s.writeResponse(conn, response{OK: false, Error: err.Error()})
+		}
 		return s.writeResponse(conn, response{OK: true, Result: true})
 	case "enter_maintenance":
 		if req.DurationSec <= 0 {

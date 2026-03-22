@@ -15,6 +15,7 @@ import (
 	"claw-keep/keepd/internal/crash"
 	"claw-keep/keepd/internal/logging"
 	"claw-keep/keepd/internal/notifier"
+	"claw-keep/keepd/internal/openclawcli"
 )
 
 type State string
@@ -535,7 +536,7 @@ func (o *Orchestrator) healthCommand() string {
 	if strings.TrimSpace(o.cfg.Monitor.HealthCommand) != "" {
 		return o.cfg.Monitor.HealthCommand
 	}
-	return "openclaw gateway health --json"
+	return ""
 }
 
 func (o *Orchestrator) verifyRecovery(ctx context.Context) error {
@@ -564,10 +565,20 @@ func (o *Orchestrator) checkRecoveryHealth() (int, bool) {
 }
 
 func (o *Orchestrator) runHealthCheck(ctx context.Context) (int, error) {
-	command := exec.CommandContext(ctx, "/bin/zsh", "-lc", o.healthCommand())
-	output, err := command.CombinedOutput()
+	var (
+		output []byte
+		err    error
+	)
+	if commandText := o.healthCommand(); commandText != "" {
+		command := exec.CommandContext(ctx, "/bin/zsh", "-lc", commandText)
+		output, err = command.CombinedOutput()
+	} else {
+		var rendered string
+		rendered, err = openclawcli.RunGatewayHealth(ctx)
+		output = []byte(rendered)
+	}
 	if err != nil {
-		return 0, fmt.Errorf("post-repair health check failed: %w: %s", err, strings.TrimSpace(string(output)))
+		return 0, fmt.Errorf("post-repair health check failed: %w", err)
 	}
 	if strings.TrimSpace(o.cfg.Monitor.HealthCommand) == "" {
 		if err := verifyDefaultHealthOutput(string(output)); err != nil {
