@@ -40,12 +40,20 @@ struct MonitorSection: View {
             }
 
             SettingsCard("维护操作", description: "应用内重启会自动进入维护窗口，不会直接触发异常修复。手动升级前也可以先暂停异常检测 5 分钟。") {
-                HStack(spacing: 12) {
-                    Button("重启 Gateway") {
-                        appState.restartGateway()
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) {
+                        Button(appState.isRestartingGatewayManually ? "正在重启..." : "重启 Gateway") {
+                            appState.restartGateway()
+                        }
+                        .disabled(!appState.isConnected || appState.isRestartingGatewayManually)
+                        Button("暂停异常检测 5 分钟") {
+                            appState.pauseDetectionForMaintenance()
+                        }
                     }
-                    Button("暂停异常检测 5 分钟") {
-                        appState.pauseDetectionForMaintenance()
+                    if appState.isRestartingGatewayManually {
+                        Text(appState.statusDetail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }

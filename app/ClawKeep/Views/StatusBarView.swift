@@ -7,8 +7,8 @@ struct StatusBarView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             Divider()
-            Button("重启 Gateway", action: appState.restartGateway)
-                .disabled(!appState.isConnected)
+            Button(appState.isRestartingGatewayManually ? "正在重启..." : "重启 Gateway", action: appState.restartGateway)
+                .disabled(!appState.isConnected || appState.isRestartingGatewayManually)
             Button("暂停异常检测 5 分钟") {
                 appState.pauseDetectionForMaintenance()
             }
@@ -55,7 +55,7 @@ struct StatusBarView: View {
                 }
             }
 
-            Text(appState.isHealthy ? "OpenClaw 正在运行" : appState.statusHeadline)
+            Text(appState.statusHeadline)
                 .font(.subheadline.weight(.semibold))
             Text(appState.status.processName)
             Text("PID: \(appState.status.pid)")

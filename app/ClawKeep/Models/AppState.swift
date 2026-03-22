@@ -106,6 +106,26 @@ enum StatusMascotState: String, Equatable {
     }
 }
 
+enum ManualGatewayRestartPhase: Equatable {
+    case idle
+    case enteringMaintenance
+    case sendingCommand
+    case waitingForConfirmation
+
+    var detail: String {
+        switch self {
+        case .idle:
+            return ""
+        case .enteringMaintenance:
+            return "正在进入维护窗口，避免把这次手动重启误判成异常退出。"
+        case .sendingCommand:
+            return "已发送重启请求，正在等待 openclaw 返回。"
+        case .waitingForConfirmation:
+            return "重启命令已返回，正在确认 Gateway 进程是否真的退出并恢复。"
+        }
+    }
+}
+
 @MainActor
 final class AppState: ObservableObject {
     static let defaultPromptTemplate = """
@@ -134,6 +154,7 @@ final class AppState: ObservableObject {
     @Published private(set) var menuBarAnimationTick = 0
     @Published private(set) var isAgentLoopBusy = false
     @Published private(set) var lastAgentLoopSignalAt: Date?
+    @Published private(set) var manualGatewayRestartPhase: ManualGatewayRestartPhase = .idle
     let socketPath = (NSTemporaryDirectory() as NSString).appendingPathComponent("claw-keep.sock")
     let configPath = ("~/.claw-keep/config.toml" as NSString).expandingTildeInPath
     let defaultNotifyEvents = ["crash", "repair_start", "repair_success", "repair_fail", "agent_timeout"]
@@ -283,22 +304,9 @@ final class AppState: ObservableObject {
     }
 
     func restartGateway() {
+        guard !isRestartingGatewayManually else { return }
         Task {
-            do {
-                let grace = max(config.monitor.exitGracePeriodSec, 1)
-                try await ipcClient.enterMaintenance(durationSec: grace, reason: "应用内正在重启 OpenClaw Gateway")
-                do {
-                    try await Task.detached(priority: .userInitiated) {
-                        let manager = DaemonManager()
-                        try manager.restartGateway()
-                    }.value
-                } catch {
-                    try? await ipcClient.exitMaintenance()
-                    throw error
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
+            await performGatewayRestart()
         }
     }
 
@@ -319,8 +327,15 @@ final class AppState: ObservableObject {
         daemonRunning && isConnected && status.state == .watching
     }
 
+    var isRestartingGatewayManually: Bool {
+        manualGatewayRestartPhase != .idle
+    }
+
     var mascotState: StatusMascotState {
         let now = Date()
+        if isRestartingGatewayManually {
+            return .restarting
+        }
         if status.state == .repairing || status.state == .collecting {
             return .fixing
         }
@@ -371,6 +386,9 @@ final class AppState: ObservableObject {
     }
 
     var statusHeadline: String {
+        if isRestartingGatewayManually {
+            return "正在重启 OpenClaw Gateway"
+        }
         if isHealthy {
             return "OpenClaw 正在正常运行"
         }
@@ -396,6 +414,9 @@ final class AppState: ObservableObject {
     }
 
     var statusDetail: String {
+        if isRestartingGatewayManually {
+            return manualGatewayRestartPhase.detail
+        }
         if status.state == .crashDetected {
             return "\(status.processName) 刚刚异常退出，退出码 \(status.exitCode)。ClawKeep 正在准备修复。"
         }
@@ -424,6 +445,71 @@ final class AppState: ObservableObject {
         let oldState = status.state
         status = newStatus
         handleRepairOutcomeTransition(from: oldState, to: newStatus)
+    }
+
+    private func performGatewayRestart() async {
+        let grace = max(config.monitor.exitGracePeriodSec, 1)
+        let previousPID = status.pid
+
+        manualGatewayRestartPhase = .enteringMaintenance
+        do {
+            try await ipcClient.enterMaintenance(durationSec: grace, reason: "应用内正在重启 OpenClaw Gateway")
+
+            manualGatewayRestartPhase = .sendingCommand
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    let manager = DaemonManager()
+                    try manager.restartGateway()
+                }.value
+            } catch {
+                try? await ipcClient.exitMaintenance()
+                throw error
+            }
+
+            manualGatewayRestartPhase = .waitingForConfirmation
+            _ = try await waitForGatewayRestartConfirmation(previousPID: previousPID, timeoutSec: max(grace + 8, 10))
+            errorMessage = ""
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        manualGatewayRestartPhase = .idle
+    }
+
+    private func waitForGatewayRestartConfirmation(previousPID: Int, timeoutSec: Int) async throws -> Int {
+        let deadline = Date().addingTimeInterval(TimeInterval(timeoutSec))
+        var observedDown = false
+
+        while Date() < deadline {
+            let latest = try await ipcClient.fetchStatus()
+            applyStatusUpdate(latest)
+
+            if previousPID > 0, latest.pid > 0, latest.pid != previousPID {
+                return latest.pid
+            }
+
+            if latest.pid == 0 || latest.detail.contains("退出") || latest.detail.contains("不可达") || latest.detail.contains("等待最多") {
+                observedDown = true
+            }
+
+            if observedDown, latest.state == .watching, latest.pid > 0 {
+                return latest.pid
+            }
+
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+
+        try? await ipcClient.exitMaintenance()
+        let hint: String
+        if previousPID > 0 {
+            hint = "在 \(timeoutSec) 秒内没有观察到 PID 从 \(previousPID) 变更，也没有看到服务先掉线再恢复"
+        } else {
+            hint = "在 \(timeoutSec) 秒内没有看到服务先掉线再恢复"
+        }
+        throw NSError(
+            domain: "ClawKeep",
+            code: 4,
+            userInfo: [NSLocalizedDescriptionKey: "重启命令已执行，但\(hint)，暂时无法确认 Gateway 真的完成了重启。"]
+        )
     }
 
     private func handleRepairOutcomeTransition(from oldState: KeepStatusModel.State, to newStatus: KeepStatusModel) {
