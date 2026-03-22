@@ -31,3 +31,23 @@ func TestAppendRuntimeEnvPrependsNodeAndOpenClawDirs(t *testing.T) {
 		t.Fatalf("expected original PATH entries to be preserved, got %q", pathValue)
 	}
 }
+
+func TestParseLaunchctlProgramPath(t *testing.T) {
+	t.Parallel()
+
+	output := `
+gui/501/ai.openclaw.gateway = {
+	program = /Users/test/.nvm/versions/node/v25.8.1/bin/node
+	arguments = {
+		/Users/test/.nvm/versions/node/v25.8.1/bin/node
+		/Users/test/.nvm/versions/node/v25.8.1/lib/node_modules/openclaw/dist/index.js
+		gateway
+	}
+}`
+
+	got := parseLaunchctlProgramPath(output)
+	want := "/Users/test/.nvm/versions/node/v25.8.1/bin/node"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}

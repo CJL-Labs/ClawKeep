@@ -1,6 +1,7 @@
 package openclawcli
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -14,6 +15,8 @@ type Runtime struct {
 	OpenClawPath string
 	NodePath     string
 }
+
+const gatewayLaunchdLabel = "ai.openclaw.gateway"
 
 var openClawFallbacks = []string{
 	"~/.nvm/versions/node/*/bin/openclaw",
@@ -29,6 +32,10 @@ var nodeFallbacks = []string{
 }
 
 func Discover() (Runtime, error) {
+	if runtime, ok := discoverLaunchdRuntime(); ok {
+		return runtime, nil
+	}
+
 	openClawPath := resolveCommand("openclaw", openClawFallbacks)
 	if openClawPath == "" {
 		return Runtime{}, fmt.Errorf("no openclaw command found")
@@ -46,6 +53,32 @@ func Discover() (Runtime, error) {
 		OpenClawPath: openClawPath,
 		NodePath:     nodePath,
 	}, nil
+}
+
+func discoverLaunchdRuntime() (Runtime, bool) {
+	output, err := exec.Command(
+		"launchctl",
+		"print",
+		fmt.Sprintf("gui/%d/%s", os.Getuid(), gatewayLaunchdLabel),
+	).CombinedOutput()
+	if err != nil {
+		return Runtime{}, false
+	}
+
+	nodePath := parseLaunchctlProgramPath(string(output))
+	if !isExecutable(nodePath) {
+		return Runtime{}, false
+	}
+
+	openClawPath := siblingOpenClawPath(nodePath)
+	if openClawPath == "" {
+		return Runtime{}, false
+	}
+
+	return Runtime{
+		OpenClawPath: openClawPath,
+		NodePath:     nodePath,
+	}, true
 }
 
 func RunGatewayRestart(ctx context.Context) error {
@@ -118,12 +151,38 @@ func dedupePathEntries(parts []string) string {
 	return strings.Join(filtered, ":")
 }
 
+func parseLaunchctlProgramPath(output string) string {
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "program = ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "program = "))
+		}
+	}
+	return ""
+}
+
 func siblingNodePath(openClawPath string) string {
 	candidates := []string{
 		filepath.Join(filepath.Dir(openClawPath), "node"),
 	}
 	if resolved, err := filepath.EvalSymlinks(openClawPath); err == nil {
 		candidates = append(candidates, filepath.Join(filepath.Dir(resolved), "node"))
+	}
+	for _, candidate := range candidates {
+		if isExecutable(candidate) {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func siblingOpenClawPath(nodePath string) string {
+	candidates := []string{
+		filepath.Join(filepath.Dir(nodePath), "openclaw"),
+	}
+	if resolved, err := filepath.EvalSymlinks(nodePath); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(resolved), "openclaw"))
 	}
 	for _, candidate := range candidates {
 		if isExecutable(candidate) {
