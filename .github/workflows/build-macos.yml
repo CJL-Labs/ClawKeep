@@ -64,7 +64,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           BUILD_CONFIGURATION=Release BUILD_NUMBER="${GITHUB_RUN_NUMBER}" APP_VERSION="${VERSION}" SKIP_PROTO=1 ./scripts/package.sh
           mkdir -p release-assets
-          cp "dist/ClawKeep-macos-Release-unsigned.zip" "release-assets/"
+          cp "dist/ClawKeep-macos-Release-unsigned.zip" "release-assets/ClawKeep-macos-${GITHUB_REF_NAME}-unsigned.zip"
 
       - name: Generate update manifest
         run: |
