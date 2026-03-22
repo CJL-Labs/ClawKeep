@@ -56,8 +56,15 @@ jobs:
           name: clawkeep-macos-unsigned
           path: release-assets
 
-      - name: Rename release asset
-        run: mv release-assets/ClawKeep-macos-Release-unsigned.zip release-assets/ClawKeep-macos-${{ github.ref_name }}-unsigned.zip
+      - name: Prepare release asset
+        run: |
+          ZIP_SOURCE="$(find release-assets -type f -name 'ClawKeep-macos-Release-unsigned.zip' -print -quit)"
+          if [[ -z "$ZIP_SOURCE" ]]; then
+            echo "Could not find ClawKeep-macos-Release-unsigned.zip under release-assets" >&2
+            find release-assets -maxdepth 4 -type f >&2 || true
+            exit 1
+          fi
+          mv "$ZIP_SOURCE" "release-assets/ClawKeep-macos-${GITHUB_REF_NAME}-unsigned.zip"
 
       - name: Generate update manifest
         run: |
