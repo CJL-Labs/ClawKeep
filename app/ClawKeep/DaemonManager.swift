@@ -47,7 +47,7 @@ final class DaemonManager {
                     name: "codex",
                     displayName: "Codex",
                     command: "codex",
-                    cliArgs: ["exec", "--skip-git-repo-check", "{{prompt}}"],
+                    cliArgs: ["exec", "--full-auto", "--skip-git-repo-check", "{{prompt}}"],
                     fallbacks: [
                         "/opt/homebrew/bin/codex",
                         "/usr/local/bin/codex"
@@ -217,8 +217,9 @@ final class DaemonManager {
             case "codex":
                 contents = contents.replacingOccurrences(of: "/usr/local/bin/codex", with: agent.cliPath)
                 contents = contents.replacingOccurrences(of: "/opt/homebrew/bin/codex", with: agent.cliPath)
-                contents = contents.replacingOccurrences(of: #"cli_args = ["exec"]"#, with: #"cli_args = ["exec", "{{prompt}}"]"#)
-                contents = contents.replacingOccurrences(of: #"cli_args = ["exec", "{{prompt}}"]"#, with: #"cli_args = ["exec", "--skip-git-repo-check", "{{prompt}}"]"#)
+                contents = contents.replacingOccurrences(of: #"cli_args = ["exec"]"#, with: #"cli_args = ["exec", "--full-auto", "--skip-git-repo-check", "{{prompt}}"]"#)
+                contents = contents.replacingOccurrences(of: #"cli_args = ["exec", "{{prompt}}"]"#, with: #"cli_args = ["exec", "--full-auto", "--skip-git-repo-check", "{{prompt}}"]"#)
+                contents = contents.replacingOccurrences(of: #"cli_args = ["exec", "--skip-git-repo-check", "{{prompt}}"]"#, with: #"cli_args = ["exec", "--full-auto", "--skip-git-repo-check", "{{prompt}}"]"#)
             default:
                 break
             }

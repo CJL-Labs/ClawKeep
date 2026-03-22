@@ -23,6 +23,21 @@ It bundles a SwiftUI control surface with a local Go daemon, watches the gateway
 - Feishu and Bark notifications
 - Automatic daily update checks for unsigned GitHub Releases
 
+### Download And Install
+
+Download the latest build from:
+
+- [Latest Release](https://github.com/CJL-Labs/ClawKeep/releases/latest)
+
+After downloading the zip:
+
+1. Unzip it.
+2. Open `ClawKeep.app` once from the extracted folder.
+3. If macOS blocks it because the app is unsigned, go to `System Settings -> Privacy & Security` and allow it to open.
+4. After the first successful open, move `ClawKeep.app` into `Applications` or `~/Applications`.
+
+`~/Applications/ClawKeep.app` is the better target for this project because unsigned auto-update works more reliably in a user-writable directory.
+
 ### How To Use It
 
 1. Launch ClawKeep. It opens the settings window on first start and also lives in the macOS menu bar.
@@ -69,8 +84,6 @@ It bundles a SwiftUI control surface with a local Go daemon, watches the gateway
 - One automatic update check per day
 - Downloads unsigned release zips from GitHub Releases
 - Replaces the current app through an external installer helper and relaunches
-
-For unsigned installs, `~/Applications/ClawKeep.app` is the safest target because it is usually writable without admin prompts.
 
 ## For Developers
 

@@ -15,6 +15,21 @@ ClawKeep 是一个面向 `openclaw-gateway` 的 macOS 菜单栏工具。
 - 接收飞书和 Bark 通知
 - 每天自动检查一次 GitHub Release 更新
 
+### 下载与安装
+
+最新版下载地址：
+
+- [Latest Release](https://github.com/CJL-Labs/ClawKeep/releases/latest)
+
+下载 zip 之后，建议这样安装：
+
+1. 先解压 zip。
+2. 先在解压出来的目录里点击打开一次 `ClawKeep.app`。
+3. 因为当前是未签名应用，如果 macOS 阻止打开，请到 `系统设置 -> 隐私与安全性` 里选择允许打开。
+4. 确认能打开之后，再把 `ClawKeep.app` 拖到 `Applications` 或 `~/Applications`。
+
+对这个项目来说，更推荐安装到 `~/Applications/ClawKeep.app`，因为未签名自动更新在用户可写目录里更稳定。
+
 ### 怎么使用
 
 1. 打开 ClawKeep。第一次启动会自动弹出设置窗口，同时它也会常驻菜单栏。
@@ -58,12 +73,6 @@ ClawKeep 是一个面向 `openclaw-gateway` 的 macOS 菜单栏工具。
 - 每天自动检查一次更新
 - 从 GitHub Releases 下载未签名 zip
 - 通过外部 helper 替换当前 app 并自动重启
-
-未签名更新更适合安装在可写目录，例如：
-
-```text
-~/Applications/ClawKeep.app
-```
 
 ## 给开发者
 
