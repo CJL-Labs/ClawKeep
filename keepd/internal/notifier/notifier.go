@@ -78,16 +78,7 @@ func (m *Manager) ApplyConfig(cfg config.NotifyConfig) {
 	for _, event := range cfg.NotifyOn {
 		events[Event(event)] = struct{}{}
 	}
-	senders := make(map[string]Sender)
-	if cfg.Feishu.Enabled && cfg.Feishu.WebhookURL != "" {
-		senders["feishu"] = &feishuSender{cfg: cfg.Feishu}
-	}
-	if cfg.Bark.Enabled && cfg.Bark.PushURL != "" {
-		senders["bark"] = &barkSender{cfg: cfg.Bark}
-	}
-	if cfg.SMTP.Enabled && cfg.SMTP.Host != "" && len(cfg.SMTP.To) > 0 {
-		senders["smtp"] = &smtpSender{cfg: cfg.SMTP}
-	}
+	senders := buildEnabledSenders(cfg)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -98,12 +89,55 @@ func (m *Manager) ApplyConfig(cfg config.NotifyConfig) {
 
 func (m *Manager) TestChannel(ctx context.Context, channel string, message Message) error {
 	m.mu.RLock()
-	sender, ok := m.senders[strings.ToLower(channel)]
+	cfg := m.config
 	m.mu.RUnlock()
+	sender, ok := buildTestSender(strings.ToLower(channel), cfg)
 	if !ok {
 		return fmt.Errorf("notification channel %q is not configured", channel)
 	}
 	return sender.Send(ctx, EventCrash, message)
+}
+
+func buildEnabledSenders(cfg config.NotifyConfig) map[string]Sender {
+	senders := make(map[string]Sender)
+	if cfg.Feishu.Enabled {
+		if sender, ok := buildTestSender("feishu", cfg); ok {
+			senders["feishu"] = sender
+		}
+	}
+	if cfg.Bark.Enabled {
+		if sender, ok := buildTestSender("bark", cfg); ok {
+			senders["bark"] = sender
+		}
+	}
+	if cfg.SMTP.Enabled {
+		if sender, ok := buildTestSender("smtp", cfg); ok {
+			senders["smtp"] = sender
+		}
+	}
+	return senders
+}
+
+func buildTestSender(channel string, cfg config.NotifyConfig) (Sender, bool) {
+	switch channel {
+	case "feishu":
+		if cfg.Feishu.WebhookURL == "" {
+			return nil, false
+		}
+		return &feishuSender{cfg: cfg.Feishu}, true
+	case "bark":
+		if cfg.Bark.PushURL == "" {
+			return nil, false
+		}
+		return &barkSender{cfg: cfg.Bark}, true
+	case "smtp":
+		if cfg.SMTP.Host == "" || len(cfg.SMTP.To) == 0 {
+			return nil, false
+		}
+		return &smtpSender{cfg: cfg.SMTP}, true
+	default:
+		return nil, false
+	}
 }
 
 type feishuSender struct {

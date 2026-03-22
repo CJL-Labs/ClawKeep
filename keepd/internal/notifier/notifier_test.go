@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"claw-keep/keepd/internal/config"
@@ -114,5 +115,81 @@ func TestBarkSenderReturnsErrorOnRejectedResponse(t *testing.T) {
 	sender := barkSender{cfg: config.BarkConfig{PushURL: server.URL + "/token-value"}}
 	if err := sender.Send(context.Background(), EventCrash, Message{Title: "title", Body: "body"}); err == nil {
 		t.Fatal("expected bark sender to fail")
+	}
+}
+
+func TestManagerTestChannelAllowsDisabledFeishuConfig(t *testing.T) {
+	t.Parallel()
+
+	received := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		defer request.Body.Close()
+
+		var payload map[string]any
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		content, ok := payload["content"].(map[string]any)
+		if !ok {
+			t.Fatalf("missing content payload: %#v", payload["content"])
+		}
+		text, _ := content["text"].(string)
+		received <- text
+
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"code":0,"msg":"success"}`))
+	}))
+	defer server.Close()
+
+	manager := NewManager(config.NotifyConfig{
+		Feishu: config.FeishuConfig{
+			Enabled:    false,
+			WebhookURL: server.URL,
+		},
+	}, nil)
+
+	if err := manager.TestChannel(context.Background(), "feishu", Message{Title: "title", Body: "body"}); err != nil {
+		t.Fatalf("test feishu channel: %v", err)
+	}
+
+	select {
+	case text := <-received:
+		if !strings.Contains(text, "title") || !strings.Contains(text, "body") {
+			t.Fatalf("unexpected payload text: %q", text)
+		}
+	default:
+		t.Fatal("expected feishu test message to be delivered")
+	}
+}
+
+func TestManagerTestChannelAllowsDisabledBarkConfig(t *testing.T) {
+	t.Parallel()
+
+	received := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		received <- request.URL.EscapedPath()
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"code":200,"message":"success"}`))
+	}))
+	defer server.Close()
+
+	manager := NewManager(config.NotifyConfig{
+		Bark: config.BarkConfig{
+			Enabled: false,
+			PushURL: server.URL + "/token-value",
+		},
+	}, nil)
+
+	if err := manager.TestChannel(context.Background(), "bark", Message{Title: "title", Body: "body"}); err != nil {
+		t.Fatalf("test bark channel: %v", err)
+	}
+
+	select {
+	case path := <-received:
+		if path != "/token-value/title/body" {
+			t.Fatalf("unexpected bark path: %q", path)
+		}
+	default:
+		t.Fatal("expected bark test message to be delivered")
 	}
 }
