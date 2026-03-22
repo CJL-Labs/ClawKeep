@@ -7,6 +7,8 @@ struct StatusBarView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             Divider()
+            updateSection
+            Divider()
             Button(appState.isRestartingGatewayManually ? "正在重启..." : "重启 Gateway", action: appState.restartGateway)
                 .disabled(!appState.isConnected || appState.isRestartingGatewayManually)
             Button("暂停异常检测 5 分钟") {
@@ -28,6 +30,29 @@ struct StatusBarView: View {
         }
         .padding()
         .frame(width: 336)
+    }
+
+    private var updateSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(appState.updateStatusTitle)
+                .font(.subheadline.weight(.semibold))
+            Text(appState.updateStatusDetail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if appState.canInstallAvailableUpdate {
+                Button("安装更新", action: appState.installAvailableUpdate)
+            }
+            Button(appState.canCheckForUpdates ? "检查更新" : "检查更新中...") {
+                appState.checkForUpdates()
+            }
+            .disabled(!appState.canCheckForUpdates)
+
+            if appState.hasAvailableUpdateReleasePage {
+                Button("打开 Release 页面", action: appState.openLatestReleasePage)
+            }
+        }
     }
 
     private var header: some View {

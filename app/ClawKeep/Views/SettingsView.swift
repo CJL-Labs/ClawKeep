@@ -9,6 +9,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 24) {
             header
             healthBanner
+            updateBanner
             tabBar
 
             Group {
@@ -62,6 +63,18 @@ struct SettingsView: View {
                 .padding(.vertical, 4)
                 .background(appState.daemonRunning ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
                 .clipShape(Capsule())
+
+                HStack(spacing: 10) {
+                    if appState.canInstallAvailableUpdate {
+                        Button("安装更新", action: appState.installAvailableUpdate)
+                            .buttonStyle(.borderedProminent)
+                    }
+                    Button(appState.canCheckForUpdates ? "检查更新" : "检查更新中...") {
+                        appState.checkForUpdates()
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!appState.canCheckForUpdates)
+                }
             }
         }
     }
@@ -152,6 +165,34 @@ struct SettingsView: View {
     }
 
     @Namespace private var tabNamespace
+
+    private var updateBanner: some View {
+        SettingsCard("应用更新", description: "每天会自动拉一次远端更新配置，也可以手动立即检查。") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(appState.updateStatusTitle)
+                    .font(.system(size: 17, weight: .semibold))
+                Text(appState.updateStatusDetail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 10) {
+                    if appState.canInstallAvailableUpdate {
+                        Button("安装更新", action: appState.installAvailableUpdate)
+                            .buttonStyle(.borderedProminent)
+                    }
+                    Button(appState.canCheckForUpdates ? "检查更新" : "检查更新中...") {
+                        appState.checkForUpdates()
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!appState.canCheckForUpdates)
+
+                    Button("打开 Release 页面", action: appState.openLatestReleasePage)
+                        .buttonStyle(.plain)
+                }
+            }
+        }
+    }
 }
 
 enum SettingsTab: CaseIterable, Identifiable {
@@ -261,4 +302,3 @@ struct SettingsFooter: View {
         .padding(.top, 8)
     }
 }
-

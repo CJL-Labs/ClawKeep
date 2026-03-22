@@ -119,6 +119,11 @@ final class DaemonManager {
         }
     }
 
+    func stopDaemon(socketPath: String) throws {
+        try cleanupStaleDaemon(socketPath: socketPath)
+        process = nil
+    }
+
     private func resolveDaemonBinary() throws -> URL {
         if let bundled = Bundle.main.url(forResource: "keepd", withExtension: nil) {
             return try prepareBundledDaemon(at: bundled)

@@ -7,6 +7,8 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: 15.0
     PRODUCT_BUNDLE_IDENTIFIER: com.clawkeep.app
     GENERATE_INFOPLIST_FILE: YES
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
 targets:
   ClawKeep:
     type: application
@@ -17,6 +19,7 @@ targets:
       - path: ClawKeep/Assets.xcassets
       - path: ../config.example.toml
       - path: ../keepd/keepd
+      - path: ../scripts/install-update.sh
     settings:
       base:
         PRODUCT_NAME: ClawKeep

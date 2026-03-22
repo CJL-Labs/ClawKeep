@@ -1,3 +1,5 @@
+import AppKit
+import CryptoKit
 import Foundation
 import SwiftUI
 
@@ -151,6 +153,7 @@ final class AppState: ObservableObject {
     @Published var isConnected = false
     @Published var errorMessage = ""
     @Published var availableAgents: [DetectedAgent] = []
+    @Published private(set) var updateState: AppUpdateState
     @Published private(set) var menuBarAnimationTick = 0
     @Published private(set) var isAgentLoopBusy = false
     @Published private(set) var lastAgentLoopSignalAt: Date?
@@ -167,6 +170,8 @@ final class AppState: ObservableObject {
     private var autosaveTask: Task<Void, Never>?
     private var statusPollTask: Task<Void, Never>?
     private var activityPollTask: Task<Void, Never>?
+    private var updateScheduleTask: Task<Void, Never>?
+    private var updateCheckTask: Task<Void, Never>?
     private var suppressAutosave = false
     private var lastPersistedConfig: AppConfig?
     private var isPersistingConfig = false
@@ -176,20 +181,40 @@ final class AppState: ObservableObject {
     private var sessionIndexPaths: [String] = []
     private var sessionFileFingerprints: [String: UInt64] = [:]
     private var lastSessionPathRefreshAt: Date = .distantPast
+    private let defaults: UserDefaults
 
     nonisolated private static let sessionPathRefreshIntervalSec: TimeInterval = 8
     nonisolated private static let sessionActiveWindowMs: Int64 = 7_000
     nonisolated private static let loopBusyHoldSeconds: TimeInterval = 2.8
-    nonisolated private static let recentOutcomeDisplaySeconds: TimeInterval = 6
+    nonisolated private static let recentOutcomeDisplaySeconds: TimeInterval = 60
     nonisolated private static let sessionTailScanBytes: Int = 8_000
     nonisolated private static let busyPollIntervalNs: UInt64 = 350_000_000
     nonisolated private static let idlePollIntervalNs: UInt64 = 700_000_000
+    nonisolated private static let launchUpdateCheckIntervalSec: TimeInterval = 18 * 60 * 60
+    nonisolated private static let automaticUpdateMaintenanceMinutes = 10
+    nonisolated private static let launchUpdateCheckDelayNs: UInt64 = 15_000_000_000
+    nonisolated private static let automaticUpdateLastCheckedKey = "app_update.last_checked_at"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+
+        var initialUpdateState = AppUpdateState()
+        if let lastCheckedAt = defaults.object(forKey: Self.automaticUpdateLastCheckedKey) as? Date {
+            initialUpdateState.lastCheckedAt = lastCheckedAt
+            initialUpdateState.phase = .upToDate
+            initialUpdateState.message = "上次检查更新时间是 \(lastCheckedAt.formatted(date: .abbreviated, time: .shortened))。"
+        } else {
+            initialUpdateState.message = "每天约 \(AppUpdateSupport.automaticCheckTimeDescription(defaults: defaults)) 自动检查一次更新。"
+        }
+        self.updateState = initialUpdateState
+    }
 
     func bootstrap() {
         guard !didStart else { return }
         didStart = true
         startMenuBarAnimation()
         startAgentLoopActivityPolling()
+        startAutomaticUpdateChecks()
 
         Task {
             let configPath = self.configPath
@@ -272,6 +297,28 @@ final class AppState: ObservableObject {
         scheduleAutosave(immediate: true)
     }
 
+    func checkForUpdates() {
+        guard updateState.phase != .checking, updateState.phase != .downloading, updateState.phase != .installing else { return }
+        updateCheckTask?.cancel()
+        updateCheckTask = Task { [weak self] in
+            await self?.performUpdateCheck(userInitiated: true)
+        }
+    }
+
+    func installAvailableUpdate() {
+        guard updateState.phase != .checking, updateState.phase != .downloading, updateState.phase != .installing else { return }
+        updateCheckTask?.cancel()
+        updateCheckTask = Task { [weak self] in
+            await self?.performInstallAvailableUpdate()
+        }
+    }
+
+    func openLatestReleasePage() {
+        let fallbackURL = URL(string: "https://github.com/CJL-Labs/ClawKeep/releases/latest")!
+        let url = updateState.availableUpdate?.releasePageURL ?? fallbackURL
+        NSWorkspace.shared.open(url)
+    }
+
     func triggerRepair() {
         Task {
             do {
@@ -329,6 +376,58 @@ final class AppState: ObservableObject {
 
     var isRestartingGatewayManually: Bool {
         manualGatewayRestartPhase != .idle
+    }
+
+    var canCheckForUpdates: Bool {
+        switch updateState.phase {
+        case .checking, .downloading, .installing:
+            return false
+        default:
+            return true
+        }
+    }
+
+    var canInstallAvailableUpdate: Bool {
+        updateState.availableUpdate != nil && updateState.phase != .checking && updateState.phase != .downloading && updateState.phase != .installing
+    }
+
+    var hasAvailableUpdateReleasePage: Bool {
+        updateState.availableUpdate?.releasePageURL != nil
+    }
+
+    var automaticUpdateTimeDescription: String {
+        AppUpdateSupport.automaticCheckTimeDescription(defaults: defaults)
+    }
+
+    var updateStatusTitle: String {
+        switch updateState.phase {
+        case .checking:
+            return "正在检查更新"
+        case .downloading:
+            return "正在下载更新"
+        case .installing:
+            return "正在安装更新"
+        case .updateAvailable:
+            if let update = updateState.availableUpdate {
+                return "发现新版本 \(update.displayVersion)"
+            }
+            return "发现新版本"
+        case .failed:
+            return "更新失败"
+        case .upToDate:
+            return "当前已是最新版本"
+        case .idle:
+            return "应用更新"
+        }
+    }
+
+    var updateStatusDetail: String {
+        var parts = [updateState.message]
+        if let lastCheckedAt = updateState.lastCheckedAt {
+            parts.append("上次检查: \(lastCheckedAt.formatted(date: .abbreviated, time: .shortened))")
+        }
+        parts.append("自动检查时间: 每天约 \(automaticUpdateTimeDescription)")
+        return parts.filter { !$0.isEmpty }.joined(separator: "  ")
     }
 
     var mascotState: StatusMascotState {
@@ -520,12 +619,14 @@ final class AppState: ObservableObject {
 
     private func handleRepairOutcomeTransition(from oldState: KeepStatusModel.State, to newStatus: KeepStatusModel) {
         let now = Date()
-        if newStatus.state == .exhausted {
+        if newStatus.state == .exhausted, oldState != .exhausted {
             recentRepairFailureAt = now
             return
         }
         if newStatus.state == .watching {
-            if oldState == .repairing || oldState == .collecting || oldState == .restarting || newStatus.detail.contains("修复完成") {
+            let recoveredFromRepairFlow = oldState == .repairing || oldState == .collecting || oldState == .restarting
+            let firstWatchingUpdateWithSuccessDetail = oldState != .watching && newStatus.detail.contains("修复完成")
+            if recoveredFromRepairFlow || firstWatchingUpdateWithSuccessDetail {
                 recentRepairSuccessAt = now
                 recentRepairFailureAt = nil
             }
@@ -807,6 +908,423 @@ final class AppState: ObservableObject {
             if config.agent.agents[index].timeoutSec <= 0 {
                 config.agent.agents[index].timeoutSec = 300
             }
+        }
+    }
+
+    private func startAutomaticUpdateChecks() {
+        updateScheduleTask?.cancel()
+        updateScheduleTask = Task { [weak self] in
+            guard let self else { return }
+
+            if self.shouldRunLaunchUpdateCheck() {
+                try? await Task.sleep(nanoseconds: Self.launchUpdateCheckDelayNs)
+                guard !Task.isCancelled else { return }
+                await self.performUpdateCheck(userInitiated: false)
+            }
+
+            while !Task.isCancelled {
+                let nextRun = AppUpdateSupport.nextAutomaticCheckDate(defaults: self.defaults)
+                let sleepSeconds = max(nextRun.timeIntervalSinceNow, 1)
+                try? await Task.sleep(nanoseconds: UInt64(sleepSeconds * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                await self.performUpdateCheck(userInitiated: false)
+            }
+        }
+    }
+
+    private func shouldRunLaunchUpdateCheck() -> Bool {
+        guard let lastCheckedAt = updateState.lastCheckedAt else { return true }
+        return Date().timeIntervalSince(lastCheckedAt) >= Self.launchUpdateCheckIntervalSec
+    }
+
+    private func performUpdateCheck(userInitiated: Bool) async {
+        guard updateState.phase != .checking, updateState.phase != .downloading, updateState.phase != .installing else { return }
+
+        let existingUpdate = updateState.availableUpdate
+        updateState.phase = .checking
+        updateState.message = userInitiated ? "正在向 GitHub 检查最新版本。" : "正在后台检查最新版本。"
+
+        do {
+            let remoteUpdate = try await AppUpdateSupport.fetchAvailableUpdate()
+            let checkedAt = Date()
+            updateState.lastCheckedAt = checkedAt
+            defaults.set(checkedAt, forKey: Self.automaticUpdateLastCheckedKey)
+
+            if let remoteUpdate, AppUpdateSupport.isRemoteUpdateNewer(remoteUpdate) {
+                updateState.availableUpdate = remoteUpdate
+                updateState.phase = .updateAvailable
+                if let publishedAt = remoteUpdate.publishedAt {
+                    updateState.message = "发现新版本 \(remoteUpdate.displayVersion)，发布于 \(publishedAt.formatted(date: .abbreviated, time: .shortened))。"
+                } else {
+                    updateState.message = "发现新版本 \(remoteUpdate.displayVersion)。"
+                }
+                return
+            }
+
+            updateState.availableUpdate = nil
+            updateState.phase = .upToDate
+            updateState.message = userInitiated ? "当前已经是最新版本。" : "后台已检查，当前没有新版本。"
+        } catch {
+            updateState.availableUpdate = existingUpdate
+            updateState.phase = .failed
+            updateState.message = userInitiated
+                ? "检查更新失败：\(error.localizedDescription)"
+                : "后台检查更新失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func performInstallAvailableUpdate() async {
+        guard let update = updateState.availableUpdate else { return }
+
+        let targetAppURL = Bundle.main.bundleURL.standardizedFileURL
+        let parentDirectory = targetAppURL.deletingLastPathComponent()
+        guard FileManager.default.isWritableFile(atPath: parentDirectory.path) else {
+            updateState.phase = .failed
+            updateState.message = "当前安装目录不可写，自动更新需要对 \(parentDirectory.path) 有写权限。"
+            return
+        }
+
+        do {
+            updateState.phase = .downloading
+            updateState.message = "正在下载并校验 \(update.displayVersion)。"
+            let stagedAppURL = try await AppUpdateSupport.prepareUpdateBundle(for: update)
+
+            updateState.phase = .installing
+            updateState.message = "正在安装 \(update.displayVersion)，完成后会自动重启。"
+
+            if isConnected {
+                try? await ipcClient.enterMaintenance(
+                    durationSec: Self.automaticUpdateMaintenanceMinutes * 60,
+                    reason: "ClawKeep 正在安装新版本"
+                )
+            }
+
+            let socketPath = self.socketPath
+            _ = try? await Task.detached(priority: .userInitiated) {
+                let manager = DaemonManager()
+                try manager.stopDaemon(socketPath: socketPath)
+            }.value
+
+            try AppUpdateSupport.launchInstaller(
+                sourceAppURL: stagedAppURL,
+                targetAppURL: targetAppURL,
+                ownerPID: getpid()
+            )
+            NSApplication.shared.terminate(nil)
+        } catch {
+            updateState.phase = .failed
+            updateState.message = "安装更新失败：\(error.localizedDescription)"
+        }
+    }
+}
+
+struct AvailableAppUpdate: Equatable {
+    let version: String
+    let build: Int?
+    let downloadURL: URL
+    let releasePageURL: URL?
+    let publishedAt: Date?
+    let sha256: String?
+
+    var displayVersion: String {
+        if let build {
+            return "\(version) (\(build))"
+        }
+        return version
+    }
+}
+
+enum AppUpdatePhase: Equatable {
+    case idle
+    case checking
+    case upToDate
+    case updateAvailable
+    case downloading
+    case installing
+    case failed
+}
+
+struct AppUpdateState: Equatable {
+    var phase: AppUpdatePhase = .idle
+    var availableUpdate: AvailableAppUpdate?
+    var lastCheckedAt: Date?
+    var message = "还没有检查更新。"
+}
+
+private struct GitHubLatestRelease: Decodable {
+    struct Asset: Decodable {
+        let name: String
+        let browserDownloadURL: URL
+
+        enum CodingKeys: String, CodingKey {
+            case name
+            case browserDownloadURL = "browser_download_url"
+        }
+    }
+
+    let tagName: String
+    let htmlURL: URL
+    let publishedAt: Date?
+    let assets: [Asset]
+
+    enum CodingKeys: String, CodingKey {
+        case tagName = "tag_name"
+        case htmlURL = "html_url"
+        case publishedAt = "published_at"
+        case assets
+    }
+}
+
+private struct AppUpdateManifest: Decodable {
+    let version: String
+    let build: Int?
+    let publishedAt: Date?
+    let url: URL
+    let sha256: String?
+    let releasePage: URL?
+
+    enum CodingKeys: String, CodingKey {
+        case version
+        case build
+        case publishedAt = "published_at"
+        case url
+        case sha256
+        case releasePage = "release_page"
+    }
+}
+
+private enum AppUpdateSupport {
+    static let releaseAPIURL = URL(string: "https://api.github.com/repos/CJL-Labs/ClawKeep/releases/latest")!
+    static let manifestAssetName = "latest-macos.json"
+    static let zipAssetPrefix = "ClawKeep-macos-"
+    static let zipAssetSuffix = "-unsigned.zip"
+
+    static func configuredRequest(for url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("ClawKeep", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 20
+        return request
+    }
+
+    static func currentAppVersion() -> String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        return (version?.isEmpty == false ? version : nil) ?? "0.0.0"
+    }
+
+    static func currentBuildNumber() -> Int {
+        let buildString = Bundle.main.object(forInfoDictionaryKey: kCFBundleVersionKey as String) as? String
+        return Int(buildString ?? "") ?? 0
+    }
+
+    static func isRemoteUpdateNewer(_ update: AvailableAppUpdate) -> Bool {
+        let currentVersion = currentAppVersion()
+        let versionComparison = currentVersion.compare(update.version, options: .numeric)
+        if versionComparison == .orderedAscending {
+            return true
+        }
+        if versionComparison == .orderedDescending {
+            return false
+        }
+
+        guard let remoteBuild = update.build else { return false }
+        return currentBuildNumber() < remoteBuild
+    }
+
+    static func fetchAvailableUpdate() async throws -> AvailableAppUpdate? {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let (releaseData, _) = try await URLSession.shared.data(for: configuredRequest(for: releaseAPIURL))
+        let release = try decoder.decode(GitHubLatestRelease.self, from: releaseData)
+
+        if let manifestAsset = release.assets.first(where: { $0.name == manifestAssetName }) {
+            let (manifestData, _) = try await URLSession.shared.data(for: configuredRequest(for: manifestAsset.browserDownloadURL))
+            let manifest = try decoder.decode(AppUpdateManifest.self, from: manifestData)
+            return AvailableAppUpdate(
+                version: manifest.version,
+                build: manifest.build,
+                downloadURL: manifest.url,
+                releasePageURL: manifest.releasePage ?? release.htmlURL,
+                publishedAt: manifest.publishedAt ?? release.publishedAt,
+                sha256: manifest.sha256
+            )
+        }
+
+        guard let zipAsset = release.assets.first(where: { $0.name.hasPrefix(zipAssetPrefix) && $0.name.hasSuffix(zipAssetSuffix) }) else {
+            return nil
+        }
+
+        return AvailableAppUpdate(
+            version: release.tagName.trimmingCharacters(in: CharacterSet(charactersIn: "v")),
+            build: nil,
+            downloadURL: zipAsset.browserDownloadURL,
+            releasePageURL: release.htmlURL,
+            publishedAt: release.publishedAt,
+            sha256: nil
+        )
+    }
+
+    static func prepareUpdateBundle(for update: AvailableAppUpdate) async throws -> URL {
+        try await Task.detached(priority: .userInitiated) {
+            let fileManager = FileManager.default
+            let cacheRoot = try cacheDirectory(for: update)
+            try fileManager.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
+
+            let archiveURL = cacheRoot.appendingPathComponent("ClawKeep-update.zip")
+            let archiveExists = fileManager.fileExists(atPath: archiveURL.path)
+            let archiveIsValid = archiveExists ? try verifyArchive(at: archiveURL, expectedSHA256: update.sha256) : false
+            if !archiveExists || !archiveIsValid {
+                let (temporaryURL, _) = try await URLSession.shared.download(for: configuredRequest(for: update.downloadURL))
+                if fileManager.fileExists(atPath: archiveURL.path) {
+                    try fileManager.removeItem(at: archiveURL)
+                }
+                try fileManager.moveItem(at: temporaryURL, to: archiveURL)
+            }
+
+            guard try verifyArchive(at: archiveURL, expectedSHA256: update.sha256) else {
+                throw NSError(
+                    domain: "ClawKeep",
+                    code: 301,
+                    userInfo: [NSLocalizedDescriptionKey: "更新包校验失败，已停止安装。"]
+                )
+            }
+
+            let extractedRoot = cacheRoot.appendingPathComponent("expanded", isDirectory: true)
+            if fileManager.fileExists(atPath: extractedRoot.path) {
+                try fileManager.removeItem(at: extractedRoot)
+            }
+            try fileManager.createDirectory(at: extractedRoot, withIntermediateDirectories: true)
+            try run("/usr/bin/ditto", arguments: ["-x", "-k", archiveURL.path, extractedRoot.path])
+
+            guard let appURL = findAppBundle(in: extractedRoot) else {
+                throw NSError(
+                    domain: "ClawKeep",
+                    code: 302,
+                    userInfo: [NSLocalizedDescriptionKey: "解压后的更新包里没有找到 ClawKeep.app。"]
+                )
+            }
+            return appURL
+        }.value
+    }
+
+    static func launchInstaller(sourceAppURL: URL, targetAppURL: URL, ownerPID: pid_t) throws {
+        let fileManager = FileManager.default
+        let installerScript: URL
+        if let bundled = Bundle.main.url(forResource: "install-update", withExtension: "sh") {
+            installerScript = bundled
+        } else {
+            installerScript = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("scripts/install-update.sh")
+        }
+
+        guard fileManager.fileExists(atPath: installerScript.path) else {
+            throw NSError(
+                domain: "ClawKeep",
+                code: 303,
+                userInfo: [NSLocalizedDescriptionKey: "安装 helper 缺失，无法执行自动更新。"]
+            )
+        }
+
+        let temporaryScriptURL = fileManager.temporaryDirectory.appendingPathComponent("clawkeep-install-\(UUID().uuidString).sh")
+        if fileManager.fileExists(atPath: temporaryScriptURL.path) {
+            try fileManager.removeItem(at: temporaryScriptURL)
+        }
+        try fileManager.copyItem(at: installerScript, to: temporaryScriptURL)
+        try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: temporaryScriptURL.path)
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        task.arguments = [temporaryScriptURL.path, String(ownerPID), sourceAppURL.path, targetAppURL.path]
+        task.standardOutput = Pipe()
+        task.standardError = Pipe()
+        try task.run()
+    }
+
+    static func automaticCheckMinuteOfDay(defaults: UserDefaults = .standard) -> Int {
+        let key = "app_update.minute_of_day"
+        let stored = defaults.integer(forKey: key)
+        if stored > 0 && stored < (24 * 60) {
+            return stored
+        }
+
+        let chosen = Int.random(in: (9 * 60)...(20 * 60 + 59))
+        defaults.set(chosen, forKey: key)
+        return chosen
+    }
+
+    static func automaticCheckTimeDescription(defaults: UserDefaults = .standard) -> String {
+        let minuteOfDay = automaticCheckMinuteOfDay(defaults: defaults)
+        let hour = minuteOfDay / 60
+        let minute = minuteOfDay % 60
+        return String(format: "%02d:%02d", hour, minute)
+    }
+
+    static func nextAutomaticCheckDate(now: Date = Date(), defaults: UserDefaults = .standard) -> Date {
+        let calendar = Calendar.current
+        let minuteOfDay = automaticCheckMinuteOfDay(defaults: defaults)
+        let hour = minuteOfDay / 60
+        let minute = minuteOfDay % 60
+
+        var components = calendar.dateComponents([.year, .month, .day], from: now)
+        components.hour = hour
+        components.minute = minute
+        components.second = 0
+
+        let candidate = calendar.date(from: components) ?? now.addingTimeInterval(24 * 60 * 60)
+        if candidate > now {
+            return candidate
+        }
+        return calendar.date(byAdding: .day, value: 1, to: candidate) ?? now.addingTimeInterval(24 * 60 * 60)
+    }
+
+    private static func cacheDirectory(for update: AvailableAppUpdate) throws -> URL {
+        let caches = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        let buildSuffix = update.build.map { "-\($0)" } ?? ""
+        return caches
+            .appendingPathComponent("ClawKeep", isDirectory: true)
+            .appendingPathComponent("updates", isDirectory: true)
+            .appendingPathComponent("\(update.version)\(buildSuffix)", isDirectory: true)
+    }
+
+    private static func verifyArchive(at archiveURL: URL, expectedSHA256: String?) throws -> Bool {
+        guard let expectedSHA256, !expectedSHA256.isEmpty else { return true }
+        let data = try Data(contentsOf: archiveURL)
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return digest.caseInsensitiveCompare(expectedSHA256) == .orderedSame
+    }
+
+    private static func findAppBundle(in root: URL) -> URL? {
+        let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey])
+        while let next = enumerator?.nextObject() as? URL {
+            if next.pathExtension == "app" {
+                return next
+            }
+        }
+        return nil
+    }
+
+    private static func run(_ executable: String, arguments: [String]) throws {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: executable)
+        task.arguments = arguments
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        try task.run()
+        task.waitUntilExit()
+
+        guard task.terminationStatus == 0 else {
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw NSError(
+                domain: "ClawKeep",
+                code: Int(task.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey: output?.isEmpty == false ? output! : "执行更新命令失败。"]
+            )
         }
     }
 }

@@ -24,7 +24,11 @@ jobs:
       - name: Build unsigned app bundle
         run: |
           chmod +x scripts/*.sh
-          BUILD_CONFIGURATION=Release SKIP_PROTO=1 ./scripts/package.sh
+          APP_VERSION="0.1.0"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            APP_VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          BUILD_CONFIGURATION=Release BUILD_NUMBER="${GITHUB_RUN_NUMBER}" APP_VERSION="${APP_VERSION}" SKIP_PROTO=1 ./scripts/package.sh
 
       - name: Upload macOS app artifact
         uses: actions/upload-artifact@v4
@@ -43,6 +47,9 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
@@ -52,8 +59,27 @@ jobs:
       - name: Rename release asset
         run: mv release-assets/ClawKeep-macos-Release-unsigned.zip release-assets/ClawKeep-macos-${{ github.ref_name }}-unsigned.zip
 
+      - name: Generate update manifest
+        run: |
+          chmod +x scripts/*.sh
+          VERSION="${GITHUB_REF_NAME#v}"
+          ZIP_PATH="release-assets/ClawKeep-macos-${GITHUB_REF_NAME}-unsigned.zip"
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/ClawKeep-macos-${GITHUB_REF_NAME}-unsigned.zip"
+          RELEASE_PAGE="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}"
+          PUBLISHED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          ZIP_PATH="$ZIP_PATH" \
+          OUTPUT_PATH="release-assets/latest-macos.json" \
+          VERSION="$VERSION" \
+          BUILD_NUMBER="${GITHUB_RUN_NUMBER}" \
+          DOWNLOAD_URL="$DOWNLOAD_URL" \
+          RELEASE_PAGE="$RELEASE_PAGE" \
+          PUBLISHED_AT="$PUBLISHED_AT" \
+          ./scripts/generate-latest-json.sh
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release-assets/ClawKeep-macos-${{ github.ref_name }}-unsigned.zip
+          files: |
+            release-assets/ClawKeep-macos-${{ github.ref_name }}-unsigned.zip
+            release-assets/latest-macos.json
           generate_release_notes: true
