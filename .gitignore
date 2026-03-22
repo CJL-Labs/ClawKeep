@@ -5,3 +5,4 @@ sentineld/sentineld
 build/
 dist/
 DerivedData/
+keepd/keepd

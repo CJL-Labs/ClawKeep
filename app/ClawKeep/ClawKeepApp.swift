@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     static var sharedAppState: AppState?
 
     private var settingsWindowController: NSWindowController?
+    private var didRunTerminationCleanup = false
 
     override init() {
         super.init()
@@ -67,6 +68,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         presentSettingsWindow()
         return true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        guard !didRunTerminationCleanup else { return }
+        didRunTerminationCleanup = true
+        Self.sharedAppState?.shutdownForAppTermination()
     }
 
     func windowWillClose(_ notification: Notification) {

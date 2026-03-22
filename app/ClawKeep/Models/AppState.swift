@@ -240,6 +240,29 @@ final class AppState: ObservableObject {
         }
     }
 
+    func shutdownForAppTermination() {
+        connectionTask?.cancel()
+        connectionTask = nil
+        statusPollTask?.cancel()
+        statusPollTask = nil
+        activityPollTask?.cancel()
+        activityPollTask = nil
+        menuBarAnimationTask?.cancel()
+        menuBarAnimationTask = nil
+        autosaveTask?.cancel()
+        autosaveTask = nil
+        updateScheduleTask?.cancel()
+        updateScheduleTask = nil
+        updateCheckTask?.cancel()
+        updateCheckTask = nil
+
+        do {
+            try daemonManager.stopDaemon(socketPath: socketPath)
+        } catch {
+            // App is terminating; best-effort cleanup is sufficient here.
+        }
+    }
+
     private func maintainConnection() async {
         var backoffSeconds = 1
         while !Task.isCancelled {

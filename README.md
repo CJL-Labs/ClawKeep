@@ -1,118 +1,118 @@
 <p align="center">
-  <img src="assets/logo/clawkeep-logo.svg" width="160" alt="ClawKeep logo">
+  <img src="assets/logo/clawkeep-lobster.png" width="160" alt="ClawKeep logo">
+</p>
+
+<p align="center">
+  <a href="./README.zh-CN.md">
+    <img alt="README in Chinese" src="https://img.shields.io/badge/README-%E4%B8%AD%E6%96%87-111111?style=for-the-badge">
+  </a>
 </p>
 
 # ClawKeep
 
-ClawKeep is a macOS menu bar companion for `openclaw-gateway`.
-It keeps a local daemon alive, watches the gateway process, collects crash context, notifies you when something goes wrong, and can hand recovery work to coding agents such as Claude Code or Codex.
+ClawKeep is a native macOS menu bar app for keeping `openclaw-gateway` alive.
+It bundles a SwiftUI control surface with a local Go daemon, watches the gateway process and TCP health, sends alerts, and can hand recovery work to Claude Code, Codex, or a custom CLI command.
 
-## What It Does
+## For Users
 
-- Monitors `openclaw-gateway` on `127.0.0.1`
-- Detects exits with a grace window for planned restarts or upgrades
-- Collects crash context and relevant log paths
-- Triggers automated repair attempts through Claude Code, Codex, or a custom CLI command
-- Falls back across configured agents when one fails or times out
-- Sends notifications for crash, repair start, repair success, repair failure, and agent timeout
-- Exposes a native macOS settings UI and menu bar control surface
-- Builds unsigned macOS app bundles with GitHub Actions and publishes GitHub Releases on tags
-- Checks GitHub Releases for updates and can install newer unsigned builds automatically
+### What You Get
 
-## Feature Highlights
+- A menu bar status app for `openclaw-gateway`
+- Quick actions for restart, maintenance pause, repair, reset, and update checks
+- A settings window for monitor, repair agent, notifications, and logs
+- Feishu and Bark notifications
+- Automatic daily update checks for unsigned GitHub Releases
 
-### Native macOS app
+### How To Use It
 
-ClawKeep is a SwiftUI menu bar app with a bundled Go daemon (`keepd`).
-The app provides:
+1. Launch ClawKeep. It opens the settings window on first start and also lives in the macOS menu bar.
+2. In `Monitor`, confirm the gateway port and timeout settings for your local `openclaw-gateway`.
+3. In `Repair Agent`, choose Claude Code, Codex, or a custom command as the preferred repair tool.
+4. In `Notifications`, paste your Feishu webhook or Bark push URL and test delivery.
+5. In `Logs`, list the log files or glob paths that should be included when ClawKeep prepares crash context.
+6. Use the menu bar popup for day-to-day operations like restarting the gateway, pausing detection for maintenance, forcing a repair, or checking for updates.
 
-- A live status view in the menu bar popup
-- Quick actions to restart the gateway, pause detection for maintenance, trigger repair, reset monitoring, check updates, and install updates
-- A full settings window for monitor, agent, notification, and log configuration
+### How It Works
 
-### Crash monitoring and repair orchestration
+- ClawKeep watches the gateway process and also probes the local TCP port.
+- If the gateway exits unexpectedly, ClawKeep collects context and tries the configured repair tool.
+- If one repair agent fails or times out, ClawKeep can continue with the next available option.
+- If you are doing a planned restart or upgrade, use the maintenance pause so it is not treated as a crash.
+- The app checks GitHub Releases for updates once per day, and you can also check manually from the menu bar or settings window.
 
-The bundled daemon:
+### Supported User-Facing Features
 
-- Watches the target process and TCP health
-- Distinguishes between unexpected exits and planned maintenance windows
-- Verifies service recovery after repair
-- Tracks repair attempts and stops after the configured limit
+- Watches `openclaw-gateway`
+- Probes `127.0.0.1:<port>` to confirm service health
+- Applies a grace window for planned restarts and upgrades
+- Supports a maintenance pause from the UI
+- Lets you manually reset monitoring after repair attempts are exhausted
+- Auto-detects installed `claude` and `codex` CLIs
+- Lets you choose a preferred repair agent
+- Supports a custom repair command with custom args and working directory
+- Uses a configurable repair prompt template
+- Falls back to other configured agents when one fails or times out
+- Verifies recovery after a repair attempt succeeds
+- Feishu webhook notifications
+- Bark push notifications
+- Configurable events:
+  - `crash`
+  - `repair_start`
+  - `repair_success`
+  - `repair_fail`
+  - `agent_timeout`
 
-### Agent-driven remediation
+### Updates
 
-ClawKeep can auto-detect and prefer:
+- Manual update checks from the menu bar popup
+- Manual update checks from the settings window
+- One automatic update check per day
+- Downloads unsigned release zips from GitHub Releases
+- Replaces the current app through an external installer helper and relaunches
 
-- Claude Code
-- Codex
+For unsigned installs, `~/Applications/ClawKeep.app` is the safest target because it is usually writable without admin prompts.
 
-You can also configure a custom repair command and prompt template.
-If one repair tool fails or times out, ClawKeep can continue with the next available option.
+## For Developers
 
-### Notifications
+### Architecture
 
-The daemon supports:
+ClawKeep ships as a macOS app bundle that includes:
 
-- Feishu
-- Bark
-- SMTP via config file
+- `ClawKeep`, the SwiftUI app that owns the menu bar UI and settings window
+- `keepd`, the local Go daemon that handles monitoring, repair orchestration, config loading, notifications, and IPC
 
-The current app UI exposes Feishu and Bark directly, while SMTP remains available through `config.toml`.
-
-### Unsigned update flow
-
-This project currently distributes unsigned macOS builds.
-ClawKeep can:
-
-- Check GitHub Releases manually
-- Check once per day automatically
-- Download the latest unsigned zip
-- Replace the current app via an external helper and relaunch
-
-For the smoothest unsigned auto-update flow, install the app somewhere writable such as `~/Applications/ClawKeep.app`.
-
-## Architecture
+The app talks to `keepd` over a local Unix domain socket using JSON IPC.
 
 ```text
-SwiftUI app
-  -> menu bar UI
-  -> settings UI
-  -> local JSON IPC client
-  -> update checker / installer trigger
-
-keepd (Go daemon)
-  -> process + TCP monitoring
-  -> config watching
-  -> notification dispatch
-  -> repair orchestration
-  -> Unix domain socket IPC server
+app/       SwiftUI macOS app
+keepd/     Go daemon
+scripts/   build, packaging, dev-run, and update helper scripts
+assets/    branding assets
+.github/   GitHub Actions workflow
 ```
 
-The app and daemon communicate over local JSON IPC on a Unix domain socket.
-There is no protobuf or gRPC step in the current packaging flow.
-
-## Requirements
+### Requirements
 
 - macOS 15+
-- Xcode / `xcodebuild`
 - Go
-- Optional: `xcodegen` if you want to regenerate the Xcode project locally
+- Xcode / `xcodebuild`
+- `xcodegen` if you want to regenerate the Xcode project from `app/project.yml`
 
-## Quick Start
+### Local Development
 
-Run the full local development flow:
+Run the full local dev flow:
 
 ```bash
 ./scripts/dev-run.sh
 ```
 
-Build an unsigned debug app bundle:
+Build an unsigned debug package:
 
 ```bash
 ./scripts/package-local.sh
 ```
 
-Build an unsigned release bundle:
+Build an unsigned release package:
 
 ```bash
 ./scripts/package.sh
@@ -120,171 +120,58 @@ Build an unsigned release bundle:
 
 Outputs:
 
-- App bundle: `build/Build/Products/<Configuration>/ClawKeep.app`
-- Zip artifact: `dist/ClawKeep-macos-<Configuration>-unsigned.zip`
-
-## Configuration
-
-ClawKeep creates and maintains a local config file at:
-
-```text
-~/.claw-keep/config.toml
-```
-
-The config covers:
-
-- Monitor target and health probe settings
-- Log paths to collect during repair
-- Preferred repair agent and fallback agents
-- Custom prompt template
-- Notification channels
-- Daemon log directory, level, and retention
-
-See [`config.example.toml`](config.example.toml) for the full shape.
-
-## Updating
-
-ClawKeep now includes an unsigned GitHub Release based update flow.
-
-Behavior:
-
-- The app can check for updates from the menu bar popup and settings window
-- It also picks a daily check time automatically
-- On tagged releases, GitHub Actions publishes both the app zip and `latest-macos.json`
-- The app compares versions, downloads the latest zip, validates its SHA-256 when available, and relaunches after replacement
-
-Caveats:
-
-- This is not a signed / notarized distribution flow
-- Auto-update works best when the app bundle lives in a user-writable directory
-- GitHub Actions produces unsigned artifacts
-
-## GitHub Actions Release Flow
-
-On every push, pull request, and manual workflow run:
-
-- Build the unsigned macOS app
-- Upload the app bundle and zip as workflow artifacts
-
-On Git tags:
-
-- Create a GitHub Release
-- Rename the zip to include the tag
-- Generate `latest-macos.json`
-- Upload both the zip and manifest to the release
-
-Recommended release flow:
-
-```bash
-git push origin <branch>
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-## Repository Layout
-
-```text
-app/       SwiftUI macOS app
-keepd/     Go daemon and orchestration logic
-scripts/   local build, packaging, dev-run, and release helper scripts
-assets/    branding assets
-.github/   GitHub Actions workflows
-```
-
-## Current Scope
-
-ClawKeep is optimized for local, operator-friendly workflows around `openclaw-gateway`.
-It is intentionally pragmatic:
-
-- Native macOS only
-- Local daemon only
-- Unsigned build pipeline
-- Agent-first remediation instead of a fixed repair playbook
-
----
-
-## 中文版
-
-ClawKeep 是一个面向 `openclaw-gateway` 的 macOS 菜单栏守护工具。
-它由一个 SwiftUI 原生菜单栏 App 和一个内置的 Go 后台守护进程 `keepd` 组成，用来监控 Gateway、收集崩溃现场、发送通知，并调用 Claude Code / Codex / 自定义命令去自动修复。
-
-### 主要功能
-
-- 监控本机 `openclaw-gateway`
-- 支持 TCP 健康检查和进程退出检测
-- 提供维护窗口，避免手动重启或手动升级被误判为异常
-- 发生异常时自动收集日志路径和崩溃上下文
-- 调用 Claude Code、Codex 或自定义命令进行自动修复
-- 修复工具超时或失败时可以 fallback 到其他工具
-- 支持飞书、Bark，以及通过配置文件启用 SMTP 通知
-- 菜单栏弹窗里可以直接执行重启、暂停检测、触发修复、检查更新等操作
-- 设置页可配置监控参数、修复 Agent、通知方式和日志保留策略
-- 支持基于 GitHub Release 的未签名自动更新
-
-### 本地开发
-
-直接启动开发流程：
-
-```bash
-./scripts/dev-run.sh
-```
-
-生成本地 Debug 包：
-
-```bash
-./scripts/package-local.sh
-```
-
-生成 Release 包：
-
-```bash
-./scripts/package.sh
-```
-
-产物位置：
-
 - `build/Build/Products/<Configuration>/ClawKeep.app`
 - `dist/ClawKeep-macos-<Configuration>-unsigned.zip`
 
-### 配置文件
+### Configuration
 
-默认配置文件在：
+ClawKeep stores its config in:
 
 ```text
 ~/.claw-keep/config.toml
 ```
 
-可以配置：
+The current config surface includes:
 
-- Gateway 监听端口和检测超时
-- 崩溃宽限期和最大修复次数
-- 需要收集的日志路径
-- 默认修复工具与自定义命令
-- 修复提示词模板
-- 飞书 / Bark / SMTP 通知
-- ClawKeep 自身日志目录、级别和保留天数
+- Gateway host, port, PID file, probe timeout, and exit grace period
+- Max repair attempts
+- Log paths to include in crash context
+- Preferred repair agent and custom command settings
+- Repair prompt template
+- Feishu and Bark notification settings
+- Daemon log directory, level, and retention
 
-参考示例见 [`config.example.toml`](config.example.toml)。
+See [`config.example.toml`](./config.example.toml) for the shipped example.
 
-### 更新与发版
+### Release Flow
 
-目前项目使用未签名的 GitHub Release 分发方式。
+The repository includes a GitHub Actions workflow for unsigned builds.
 
-- App 支持手动检查更新
-- App 会每天自动检查一次 GitHub Release
-- 打 tag 时 GitHub Action 会发布 zip 和 `latest-macos.json`
-- App 会下载新包、校验哈希，并通过外部 helper 替换旧版后自动重启
+On pushes, pull requests, and manual workflow runs:
 
-建议把 App 安装到可写目录，例如：
+- Build the macOS app
+- Package an unsigned zip
+- Upload workflow artifacts
 
-```text
-~/Applications/ClawKeep.app
-```
+On version tags:
 
-推荐发版流程：
+- Create a GitHub Release
+- Upload the tagged zip
+- Generate and upload `latest-macos.json`
+
+Typical release flow:
 
 ```bash
 git push origin <branch>
 git tag v0.1.0
 git push origin v0.1.0
 ```
+
+### Scope
+
+ClawKeep is intentionally narrow:
+
+- macOS only
+- Local operator workflow around `openclaw-gateway`
+- Unsigned distribution
+- Agent-assisted repair instead of a fixed repair script
