@@ -96,7 +96,12 @@ func (o *Orchestrator) HandleCrash(ctx context.Context, report crash.Report) err
 
 	o.transition(StateCrashDetected, fmt.Sprintf("进程退出，退出码 %d。", report.ExitCode))
 	o.setCrash(report.CrashTime)
-	o.setPID(report.PID)
+	if freshPID, err := discoverPID(o.cfg.Monitor.ProcessName); err == nil && freshPID > 0 {
+		o.setPID(freshPID)
+		report.PID = freshPID
+	} else {
+		o.setPID(report.PID)
+	}
 	o.setExitCode(report.ExitCode)
 
 	if err := o.notifier.Notify(ctx, notifier.EventCrash, notifier.Message{
@@ -112,6 +117,10 @@ func (o *Orchestrator) HandleCrash(ctx context.Context, report crash.Report) err
 	}
 
 	for attempt := 1; attempt <= o.cfg.Repair.MaxRepairAttempts; attempt++ {
+		if freshPID, err := discoverPID(o.cfg.Monitor.ProcessName); err == nil && freshPID > 0 {
+			report.PID = freshPID
+			o.setPID(freshPID)
+		}
 		o.setRepairAttempts(attempt)
 		o.transition(StateRepairing, fmt.Sprintf("正在进行第 %d 次修复尝试。", attempt))
 
@@ -186,9 +195,13 @@ func (o *Orchestrator) SubscribeStatus() (<-chan StatusEvent, func()) {
 }
 
 func (o *Orchestrator) TriggerRepair(ctx context.Context) error {
+	pid := o.status.PID
+	if freshPID, err := discoverPID(o.cfg.Monitor.ProcessName); err == nil && freshPID > 0 {
+		pid = freshPID
+	}
 	report := crash.Report{
 		ProcessName: o.cfg.Monitor.ProcessName,
-		PID:         o.status.PID,
+		PID:         pid,
 		ExitCode:    o.status.ExitCode,
 		CrashTime:   time.Now(),
 		WatchPaths:  append([]string(nil), o.cfg.Log.WatchPaths...),
@@ -300,11 +313,11 @@ func (o *Orchestrator) ExitMaintenance() {
 	o.maintenanceUntil = time.Time{}
 	o.maintenanceSeq++
 	o.stabilitySeq++
-	pending := o.pendingRecovery != nil
+	o.pendingRecovery = nil
 	state := o.status.State
 	o.mu.Unlock()
 
-	if !pending && state == StateMaintenance {
+	if state == StateMaintenance {
 		o.transition(StateWatching, "维护窗口已结束。")
 	}
 }

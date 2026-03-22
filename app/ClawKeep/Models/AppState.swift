@@ -484,6 +484,11 @@ final class AppState: ObservableObject {
             applyStatusUpdate(latest)
 
             if previousPID > 0, latest.pid > 0, latest.pid != previousPID {
+                // PID changed = restart confirmed. Exit maintenance to cancel
+                // the recovery window, then pause briefly so the user sees
+                // the restarting animation before we return success.
+                try? await ipcClient.exitMaintenance()
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
                 return latest.pid
             }
 
@@ -492,6 +497,7 @@ final class AppState: ObservableObject {
             }
 
             if observedDown, latest.state == .watching, latest.pid > 0 {
+                try? await ipcClient.exitMaintenance()
                 return latest.pid
             }
 

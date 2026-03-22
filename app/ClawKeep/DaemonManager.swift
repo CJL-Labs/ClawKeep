@@ -104,8 +104,8 @@ final class DaemonManager {
         }
 
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: openClawPath)
-        task.arguments = ["gateway", "restart"]
+        task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        task.arguments = ["-lc", shellQuoted(openClawPath) + " gateway restart"]
         let output = Pipe()
         task.standardOutput = output
         task.standardError = output
