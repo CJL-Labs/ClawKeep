@@ -19,12 +19,17 @@ cd "$ROOT/app"
 if command -v xcodegen >/dev/null 2>&1; then
   xcodegen generate
 elif [[ ! -d "$ROOT/app/ClawKeep.xcodeproj" ]]; then
-  echo "xcodegen is required because app/ClawKeep.xcodeproj is missing" >&2
+  echo "xcodegen is required because app/ ClawKeep.xcodeproj is missing" >&2
   exit 1
 fi
 
 if command -v xcodebuild >/dev/null 2>&1; then
   mkdir -p "$CLONED_SOURCE_PACKAGES_DIR_PATH"
+
+  # Always build with a clean derived data path to prevent stale
+  # architecture-specific object files from being reused across builds.
+  rm -rf "$DERIVED_DATA_PATH"
+
   xcodebuild \
     -project ClawKeep.xcodeproj \
     -scheme ClawKeep \
