@@ -6,10 +6,10 @@ struct AgentSection: View {
     var body: some View {
         SettingsPane {
             SettingsCard("优先修复工具", description: "ClawKeep 会先尝试这里选中的工具；如果它失败或超时，会自动 fallback 到其他已配置工具。第一次打开时会默认选中检测到的第一个。") {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     if appState.availableAgents.isEmpty {
                         Text("暂时没有检测到 Claude Code 或 Codex。你可以先用下面的自定义修复命令。")
-                            .font(.subheadline)
+                            .font(.callout)
                             .foregroundStyle(.secondary)
                     } else {
                         Picker("优先修复工具", selection: defaultAgentSelection) {
@@ -19,19 +19,19 @@ struct AgentSection: View {
                             Text("自定义命令").tag("custom")
                         }
                         .pickerStyle(.radioGroup)
+                        .controlSize(.large)
 
                         if let selectedAgent = selectedDetectedAgent {
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 10) {
                                 Text("当前优先使用的命令")
-                                    .font(.caption)
+                                    .font(.footnote.weight(.medium))
                                     .foregroundStyle(.secondary)
                                 Text(commandPreview(for: selectedAgent))
                                     .font(.system(.body, design: .monospaced))
                                     .textSelection(.enabled)
-                                Text("Claude Code 示例：\(claudeExample)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .textSelection(.enabled)
+                                    .padding(8)
+                                    .background(Color.primary.opacity(0.04))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
                             }
                         }
                     }
@@ -39,22 +39,35 @@ struct AgentSection: View {
             }
 
             SettingsCard("自定义修复命令", description: "如果你不用 Claude Code 或 Codex，可以在这里填自己的命令。你可以显式写 `{{prompt}}`；如果不写，ClawKeep 会自动把提示词作为最后一个参数追加。") {
-                VStack(alignment: .leading, spacing: 12) {
-                    TextField("命令路径（示例：/opt/homebrew/bin/claude）", text: customAgentPathBinding)
-                    Text("这里填可执行文件本身的绝对路径，例如 `/opt/homebrew/bin/claude` 或 `/opt/homebrew/bin/codex`。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                    TextField("命令参数（示例：--dangerously-skip-permissions -p {{prompt}}）", text: customAgentArgsBinding)
-                    TextField("工作目录（命令执行时所在目录，例如：~/.openclaw/）", text: customAgentWorkingDirBinding)
-                    Text("工作目录就是运行这条修复命令时所在的目录。Agent 会把这里当成当前项目目录。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("命令路径")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        TextField("/usr/local/bin/claude", text: customAgentPathBinding)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("命令参数")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        TextField("--dangerously-skip-permissions -p {{prompt}}", text: customAgentArgsBinding)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("工作目录")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        TextField("~/.openclaw/", text: customAgentWorkingDirBinding)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
+
                     numericField(title: "超时时间（秒）", placeholder: "300", binding: customAgentTimeoutBinding)
-                    Text("示例命令：\(claudeExample)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
                 }
             }
 

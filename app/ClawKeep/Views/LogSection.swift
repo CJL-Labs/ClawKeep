@@ -15,12 +15,20 @@ struct LogSection: View {
             }
 
             SettingsCard("ClawKeep 自己的运行日志", description: "如果你需要排查 ClawKeep 本身的问题，可以看这里。") {
-                VStack(alignment: .leading, spacing: 12) {
-                    TextField("日志保存到", text: Binding(
-                        get: { appState.config.daemon.logDir },
-                        set: { appState.config.daemon.logDir = $0 }
-                    ))
-                    Picker("详细程度", selection: Binding(
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("日志保存目录")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        TextField("示例：~/.clawkeep/logs", text: Binding(
+                            get: { appState.config.daemon.logDir },
+                            set: { appState.config.daemon.logDir = $0 }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .controlSize(.large)
+                    }
+
+                    Picker("日志详细程度", selection: Binding(
                         get: { appState.config.daemon.logLevel },
                         set: { appState.config.daemon.logLevel = $0 }
                     )) {
@@ -28,7 +36,10 @@ struct LogSection: View {
                             Text(level).tag(level)
                         }
                     }
-                    Stepper("日志保留：\(appState.config.daemon.logRetainDays) 天", value: retainDaysBinding, in: 1...90)
+                    .pickerStyle(.segmented)
+                    
+                    Stepper("日志保留时长：\(appState.config.daemon.logRetainDays) 天", value: retainDaysBinding, in: 1...90)
+                        .font(.body)
                 }
             }
 

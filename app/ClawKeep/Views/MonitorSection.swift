@@ -63,22 +63,24 @@ struct MonitorSection: View {
     }
 
     private func monitorFact(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.caption)
+                .font(.footnote.weight(.medium))
                 .foregroundStyle(.secondary)
             Text(value)
+                .font(.body.weight(.semibold))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func numericField(title: String, placeholder: String, binding: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.caption)
+                .font(.footnote.weight(.medium))
                 .foregroundStyle(.secondary)
             TextField(placeholder, text: binding)
                 .textFieldStyle(.roundedBorder)
+                .controlSize(.large)
         }
     }
 
