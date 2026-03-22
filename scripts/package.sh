@@ -11,6 +11,7 @@ APP_PATH="$DERIVED_DATA_PATH/Build/Products/$BUILD_CONFIGURATION/$APP_NAME"
 ZIP_PATH="$DIST_DIR/ClawKeep-macos-$BUILD_CONFIGURATION-unsigned.zip"
 KEEPD_PATH="$APP_PATH/Contents/Resources/keepd"
 CONFIG_PATH="$APP_PATH/Contents/Resources/config.example.toml"
+INSTALLER_HELPER_PATH="$APP_PATH/Contents/Resources/install-update.sh"
 
 mkdir -p "$DIST_DIR"
 
@@ -28,6 +29,8 @@ mkdir -p "$APP_PATH/Contents/Resources"
 cp "$ROOT/keepd/keepd" "$KEEPD_PATH"
 chmod +x "$KEEPD_PATH"
 cp "$ROOT/config.example.toml" "$CONFIG_PATH"
+cp "$ROOT/scripts/install-update.sh" "$INSTALLER_HELPER_PATH"
+chmod +x "$INSTALLER_HELPER_PATH"
 
 # Re-sign nested helper and bundle after copying resources so macOS
 # can launch the embedded daemon from the packaged app.
