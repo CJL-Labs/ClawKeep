@@ -29,12 +29,12 @@ Download the latest build from:
 
 - [Latest Release](https://github.com/CJL-Labs/ClawKeep/releases/latest)
 
-After downloading the zip:
+Preferred install flow:
 
-1. Unzip it.
-2. Open `ClawKeep.app` once from the extracted folder.
-3. If macOS blocks it because the app is unsigned, go to `System Settings -> Privacy & Security` and allow it to open.
-4. After the first successful open, move `ClawKeep.app` into `Applications` or `~/Applications`.
+1. Download `ClawKeep-macos-<version>-unsigned.dmg` from the latest release.
+2. Open the DMG and drag `ClawKeep.app` into `Applications` or `~/Applications`.
+3. Launch `ClawKeep.app`.
+4. If macOS blocks it because the app is unsigned, go to `System Settings -> Privacy & Security` and allow it to open.
 
 `~/Applications/ClawKeep.app` is the better target for this project because unsigned auto-update works more reliably in a user-writable directory.
 
@@ -135,6 +135,7 @@ Outputs:
 
 - `build/Build/Products/<Configuration>/ClawKeep.app`
 - `dist/ClawKeep-macos-<Configuration>-unsigned.zip`
+- `dist/ClawKeep-macos-<Configuration>-unsigned.dmg`
 
 ### Configuration
 
@@ -163,13 +164,13 @@ The repository includes a GitHub Actions workflow for unsigned builds.
 On pushes, pull requests, and manual workflow runs:
 
 - Build the macOS app
-- Package an unsigned zip
+- Package unsigned zip and DMG artifacts
 - Upload workflow artifacts
 
 On version tags:
 
 - Create a GitHub Release
-- Upload the tagged zip
+- Upload the tagged zip and DMG
 - Generate and upload `latest-macos.json`
 
 Typical release flow:

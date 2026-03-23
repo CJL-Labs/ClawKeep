@@ -36,6 +36,7 @@ jobs:
           name: clawkeep-macos-unsigned
           path: |
             dist/ClawKeep-macos-Release-unsigned.zip
+            dist/ClawKeep-macos-Release-unsigned.dmg
             build/Build/Products/Release/ClawKeep.app
           if-no-files-found: error
 
@@ -64,6 +65,7 @@ jobs:
           BUILD_CONFIGURATION=Release BUILD_NUMBER="${GITHUB_RUN_NUMBER}" APP_VERSION="${VERSION}" SKIP_PROTO=1 ./scripts/package.sh
           mkdir -p release-assets
           cp "dist/ClawKeep-macos-Release-unsigned.zip" "release-assets/ClawKeep-macos-${GITHUB_REF_NAME}-unsigned.zip"
+          cp "dist/ClawKeep-macos-Release-unsigned.dmg" "release-assets/ClawKeep-macos-${GITHUB_REF_NAME}-unsigned.dmg"
 
       - name: Generate update manifest
         run: |
@@ -87,5 +89,6 @@ jobs:
         with:
           files: |
             release-assets/ClawKeep-macos-${{ github.ref_name }}-unsigned.zip
+            release-assets/ClawKeep-macos-${{ github.ref_name }}-unsigned.dmg
             release-assets/latest-macos.json
           generate_release_notes: true

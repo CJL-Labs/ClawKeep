@@ -9,6 +9,7 @@ DIST_DIR="${DIST_DIR:-$ROOT/dist}"
 APP_NAME="ClawKeep.app"
 APP_PATH="$DERIVED_DATA_PATH/Build/Products/$BUILD_CONFIGURATION/$APP_NAME"
 ZIP_PATH="$DIST_DIR/ClawKeep-macos-$BUILD_CONFIGURATION-unsigned.zip"
+DMG_PATH="$DIST_DIR/ClawKeep-macos-$BUILD_CONFIGURATION-unsigned.dmg"
 KEEPD_PATH="$APP_PATH/Contents/Resources/keepd"
 CONFIG_PATH="$APP_PATH/Contents/Resources/config.example.toml"
 INSTALLER_HELPER_PATH="$APP_PATH/Contents/Resources/install-update.sh"
@@ -40,5 +41,28 @@ codesign --force --deep --sign - "$APP_PATH"
 rm -f "$ZIP_PATH"
 ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
 
+if ! command -v hdiutil >/dev/null 2>&1; then
+  echo "hdiutil is required to produce the DMG package" >&2
+  exit 1
+fi
+
+DMG_STAGING_DIR="$(mktemp -d "$DIST_DIR/dmg-staging.XXXXXX")"
+cleanup() {
+  rm -rf "$DMG_STAGING_DIR"
+}
+trap cleanup EXIT
+
+ditto "$APP_PATH" "$DMG_STAGING_DIR/$APP_NAME"
+ln -s /Applications "$DMG_STAGING_DIR/Applications"
+
+rm -f "$DMG_PATH"
+hdiutil create \
+  -volname "ClawKeep" \
+  -srcfolder "$DMG_STAGING_DIR" \
+  -ov \
+  -format UDZO \
+  "$DMG_PATH"
+
 echo "Unsigned app: $APP_PATH"
 echo "Unsigned zip: $ZIP_PATH"
+echo "Unsigned dmg: $DMG_PATH"

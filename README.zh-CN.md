@@ -21,12 +21,12 @@ ClawKeep 是一个面向 `openclaw-gateway` 的 macOS 菜单栏工具。
 
 - [Latest Release](https://github.com/CJL-Labs/ClawKeep/releases/latest)
 
-下载 zip 之后，建议这样安装：
+建议优先使用 DMG 安装：
 
-1. 先解压 zip。
-2. 先在解压出来的目录里点击打开一次 `ClawKeep.app`。
-3. 因为当前是未签名应用，如果 macOS 阻止打开，请到 `系统设置 -> 隐私与安全性` 里选择允许打开。
-4. 确认能打开之后，再把 `ClawKeep.app` 拖到 `Applications` 或 `~/Applications`。
+1. 从最新 Release 下载 `ClawKeep-macos-<version>-unsigned.dmg`。
+2. 打开 DMG，把 `ClawKeep.app` 拖到 `Applications` 或 `~/Applications`。
+3. 启动 `ClawKeep.app`。
+4. 因为当前是未签名应用，如果 macOS 阻止打开，请到 `系统设置 -> 隐私与安全性` 里选择允许打开。
 
 对这个项目来说，更推荐安装到 `~/Applications/ClawKeep.app`，因为未签名自动更新在用户可写目录里更稳定。
 
@@ -124,6 +124,7 @@ assets/    品牌素材
 
 - `build/Build/Products/<Configuration>/ClawKeep.app`
 - `dist/ClawKeep-macos-<Configuration>-unsigned.zip`
+- `dist/ClawKeep-macos-<Configuration>-unsigned.dmg`
 
 ### 配置文件
 
@@ -152,13 +153,13 @@ assets/    品牌素材
 普通 `push`、`pull_request`、手动触发时：
 
 - 构建 macOS App
-- 打包未签名 zip
+- 打包未签名 zip 和 DMG
 - 上传 workflow artifact
 
 打 tag 时：
 
 - 创建 GitHub Release
-- 上传带 tag 的 zip
+- 上传带 tag 的 zip 和 DMG
 - 生成并上传 `latest-macos.json`
 
 推荐发版流程：
