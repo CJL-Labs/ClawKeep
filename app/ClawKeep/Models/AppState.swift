@@ -191,6 +191,7 @@ final class AppState: ObservableObject {
     nonisolated private static let busyPollIntervalNs: UInt64 = 350_000_000
     nonisolated private static let idlePollIntervalNs: UInt64 = 700_000_000
     nonisolated private static let menuBarAnimationIntervalNs: UInt64 = 200_000_000
+    nonisolated private static let menuBarIdleCheckIntervalNs: UInt64 = 500_000_000
     nonisolated private static let launchUpdateCheckIntervalSec: TimeInterval = 18 * 60 * 60
     nonisolated private static let automaticUpdateMaintenanceMinutes = 10
     nonisolated private static let launchUpdateCheckDelayNs: UInt64 = 15_000_000_000
@@ -668,9 +669,25 @@ final class AppState: ObservableObject {
         menuBarAnimationTask?.cancel()
         menuBarAnimationTask = Task { [weak self] in
             while let self, !Task.isCancelled {
-                self.menuBarAnimationTick = (self.menuBarAnimationTick + 1) % 10_000
-                try? await Task.sleep(nanoseconds: Self.menuBarAnimationIntervalNs)
+                if Self.shouldAnimateMenuBar(for: self.mascotState) {
+                    self.menuBarAnimationTick = (self.menuBarAnimationTick + 1) % 10_000
+                    try? await Task.sleep(nanoseconds: Self.menuBarAnimationIntervalNs)
+                } else {
+                    if self.menuBarAnimationTick != 0 {
+                        self.menuBarAnimationTick = 0
+                    }
+                    try? await Task.sleep(nanoseconds: Self.menuBarIdleCheckIntervalNs)
+                }
             }
+        }
+    }
+
+    nonisolated private static func shouldAnimateMenuBar(for state: StatusMascotState) -> Bool {
+        switch state {
+        case .idle, .failed:
+            return false
+        case .busy, .restarting, .error, .fixing, .success:
+            return true
         }
     }
 
