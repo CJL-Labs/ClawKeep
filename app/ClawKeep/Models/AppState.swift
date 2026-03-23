@@ -1113,9 +1113,23 @@ private struct AppUpdateManifest: Decodable {
     }
 }
 
+private enum AppUpdateError: LocalizedError {
+    case badServerResponse(statusCode: Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .badServerResponse(403):
+            return "GitHub 当前拒绝了更新请求（403）。请稍后重试。"
+        case let .badServerResponse(statusCode):
+            return "更新服务器返回了异常状态（HTTP \(statusCode)）。"
+        }
+    }
+}
+
 private enum AppUpdateSupport {
     static let releaseAPIURL = URL(string: "https://api.github.com/repos/CJL-Labs/ClawKeep/releases/latest")!
-    static let manifestAssetName = "latest-macos.json"
+    static let releaseLatestPageURL = URL(string: "https://github.com/CJL-Labs/ClawKeep/releases/latest")!
+    static let manifestURL = URL(string: "https://github.com/CJL-Labs/ClawKeep/releases/latest/download/latest-macos.json")!
     static let zipAssetPrefix = "ClawKeep-macos-"
     static let zipAssetSuffix = "-unsigned.zip"
 
@@ -1155,21 +1169,19 @@ private enum AppUpdateSupport {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
-        let (releaseData, _) = try await URLSession.shared.data(for: configuredRequest(for: releaseAPIURL))
-        let release = try decoder.decode(GitHubLatestRelease.self, from: releaseData)
-
-        if let manifestAsset = release.assets.first(where: { $0.name == manifestAssetName }) {
-            let (manifestData, _) = try await URLSession.shared.data(for: configuredRequest(for: manifestAsset.browserDownloadURL))
-            let manifest = try decoder.decode(AppUpdateManifest.self, from: manifestData)
+        if let manifest = try await fetchLatestManifest(decoder: decoder) {
             return AvailableAppUpdate(
                 version: manifest.version,
                 build: manifest.build,
                 downloadURL: manifest.url,
-                releasePageURL: manifest.releasePage ?? release.htmlURL,
-                publishedAt: manifest.publishedAt ?? release.publishedAt,
+                releasePageURL: manifest.releasePage ?? releaseLatestPageURL,
+                publishedAt: manifest.publishedAt,
                 sha256: manifest.sha256
             )
         }
+
+        let releaseData = try await fetchData(from: releaseAPIURL)
+        let release = try decoder.decode(GitHubLatestRelease.self, from: releaseData)
 
         guard let zipAsset = release.assets.first(where: { $0.name.hasPrefix(zipAssetPrefix) && $0.name.hasSuffix(zipAssetSuffix) }) else {
             return nil
@@ -1195,7 +1207,7 @@ private enum AppUpdateSupport {
             let archiveExists = fileManager.fileExists(atPath: archiveURL.path)
             let archiveIsValid = archiveExists ? try verifyArchive(at: archiveURL, expectedSHA256: update.sha256) : false
             if !archiveExists || !archiveIsValid {
-                let (temporaryURL, _) = try await URLSession.shared.download(for: configuredRequest(for: update.downloadURL))
+                let temporaryURL = try await downloadFile(from: update.downloadURL)
                 if fileManager.fileExists(atPath: archiveURL.path) {
                     try fileManager.removeItem(at: archiveURL)
                 }
@@ -1315,6 +1327,36 @@ private enum AppUpdateSupport {
         let data = try Data(contentsOf: archiveURL)
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         return digest.caseInsensitiveCompare(expectedSHA256) == .orderedSame
+    }
+
+    private static func fetchLatestManifest(decoder: JSONDecoder) async throws -> AppUpdateManifest? {
+        do {
+            let manifestData = try await fetchData(from: manifestURL)
+            return try decoder.decode(AppUpdateManifest.self, from: manifestData)
+        } catch AppUpdateError.badServerResponse(404) {
+            return nil
+        }
+    }
+
+    private static func fetchData(from url: URL) async throws -> Data {
+        let (data, response) = try await URLSession.shared.data(for: configuredRequest(for: url))
+        try validate(response: response)
+        return data
+    }
+
+    private static func downloadFile(from url: URL) async throws -> URL {
+        let (temporaryURL, response) = try await URLSession.shared.download(for: configuredRequest(for: url))
+        try validate(response: response)
+        return temporaryURL
+    }
+
+    private static func validate(response: URLResponse) throws {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw AppUpdateError.badServerResponse(statusCode: httpResponse.statusCode)
+        }
     }
 
     private static func findAppBundle(in root: URL) -> URL? {
