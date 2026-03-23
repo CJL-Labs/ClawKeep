@@ -190,6 +190,7 @@ final class AppState: ObservableObject {
     nonisolated private static let sessionTailScanBytes: Int = 8_000
     nonisolated private static let busyPollIntervalNs: UInt64 = 350_000_000
     nonisolated private static let idlePollIntervalNs: UInt64 = 700_000_000
+    nonisolated private static let menuBarAnimationIntervalNs: UInt64 = 200_000_000
     nonisolated private static let launchUpdateCheckIntervalSec: TimeInterval = 18 * 60 * 60
     nonisolated private static let automaticUpdateMaintenanceMinutes = 10
     nonisolated private static let launchUpdateCheckDelayNs: UInt64 = 15_000_000_000
@@ -668,7 +669,7 @@ final class AppState: ObservableObject {
         menuBarAnimationTask = Task { [weak self] in
             while let self, !Task.isCancelled {
                 self.menuBarAnimationTick = (self.menuBarAnimationTick + 1) % 10_000
-                try? await Task.sleep(nanoseconds: 50_000_000)
+                try? await Task.sleep(nanoseconds: Self.menuBarAnimationIntervalNs)
             }
         }
     }
